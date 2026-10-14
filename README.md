@@ -65,6 +65,7 @@ npm run build   # 輸出至 dist/，可直接部署到 GitHub Pages / Netlify / 
 ```
 
 push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置、**跑完測試**，通過後才部署到 GitHub Pages。
+開 Pull Request 時，[test.yml](.github/workflows/test.yml) 會在 PR 上建置並跑同一套測試（不部署），合併前就能看到結果。
 
 ### 測試
 

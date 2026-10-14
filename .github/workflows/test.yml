@@ -1,0 +1,38 @@
+name: Test
+
+# PR 上只建置與測試，不部署；部署由 deploy.yml 在 push 到 main 時進行
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一個 PR 推新 commit 時，取消還在跑的舊測試
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # tracer 測試直接在 Python 執行；版本對齊 Pyodide 0.26 內的 Python 3.12
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # e2e 會以 vite preview 啟動 dist/，並用 runner 內建的 Google Chrome 操作網站
+      - name: Test
+        run: npm test
