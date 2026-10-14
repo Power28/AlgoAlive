@@ -4,13 +4,15 @@
 
 **🔗 線上 Demo：https://power28.github.io/AlgoAlive/**
 
-[![AlgoAlive 執行 1. Two Sum：complement 命中 seen 字典的那一步](docs/screenshot.png)](https://power28.github.io/AlgoAlive/)
+[![AlgoAlive 播放 283. Move Zeroes：slow / fast 指針移動與格子交換動畫](docs/move-zeroes.gif)](https://power28.github.io/AlgoAlive/)
 
 AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器。貼上一般的 Python 函式與測試呼叫，按下 **Visualize**，就能一步步看到 list 方格、指針移動、dict 查表與變數變化——不用手動加任何 `print`。
 
 全部在瀏覽器內執行（Pyodide / WebAssembly），純靜態網頁即可部署，不需後端。
 
 ## 功能
+
+![AlgoAlive 執行 1. Two Sum：complement 命中 seen 字典的那一步](docs/screenshot.png)
 
 - **零侵入追蹤**：以 `sys.settrace` 攔截使用者函式的 `line` / `return` / `exception` 事件，自動快照 `frame.f_locals`
 - **List 方格 + 指針**：`left` / `right` / `i` / `j` / `slow` / `fast` / `lo` / `hi` / `mid`… 等索引變數自動畫成格子下方的彩色指針；`left`+`right` 等配對會畫出視窗範圍
