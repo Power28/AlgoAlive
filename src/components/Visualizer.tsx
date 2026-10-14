@@ -21,12 +21,14 @@ interface Props {
   prev?: ExecutionStep;
   cellKeys: Record<string, string[]>;
   indexMap: IndexMap;
+  /** 最上方卡片欄位的固定高度（px，見 infoSlotHeight）；沒給時卡片直接疊在內容上方 */
+  slotHeight?: number;
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
+export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -131,22 +133,45 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
     lookups.set(k, [...(lookups.get(k) ?? []), name]);
   }
 
-  return (
-    <HeapContext.Provider value={heap}>
-    <div className="flex flex-col gap-6">
-      {/* 以步驟編號當 key：連續兩步都有卡片時也會重新播放動畫 */}
-      {step.event === 'line' && step.condition && <ConditionPanel key={`cond-${step.stepIndex}`} condition={step.condition} heap={heap} line={step.lineNumber} />}
-      {step.event === 'line' && step.calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={step.calc} line={step.lineNumber} />}
-      {step.event === 'return' && step.returnValue && (
+  // 最上方的卡片：條件判斷、計算、回傳、例外（以步驟編號當 key：連續兩步都有卡片時也會重新播放動畫）
+  const cond = step.event === 'line' ? step.condition : undefined;
+  const calc = step.event === 'line' ? step.calc : undefined;
+  const returned = step.event === 'return' ? step.returnValue : undefined;
+  const hasCard = !!(cond || calc || returned || step.event === 'exception');
+  const cards = (
+    <>
+      {cond && <ConditionPanel key={`cond-${step.stepIndex}`} condition={cond} heap={heap} line={step.lineNumber} />}
+      {calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={calc} line={step.lineNumber} />}
+      {returned && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
-          <code className="font-semibold" data-return>{formatPy(step.returnValue, heap)}</code>
+          <code className="font-semibold" data-return>{formatPy(returned, heap)}</code>
         </Banner>
       )}
       {step.event === 'exception' && (
         <Banner tone="err" icon={<TriangleAlert size={16} />}>
           <code>{step.exception}</code>
         </Banner>
+      )}
+    </>
+  );
+
+  return (
+    <HeapContext.Provider value={heap}>
+    <div className="flex flex-col gap-6">
+      {slotHeight === undefined ? (
+        cards
+      ) : (
+        // 固定高度的卡片欄位：卡片時有時無、高低不同，也不會推動下面的內容
+        <div className="scrollbar-thin shrink-0 overflow-y-auto [overflow-anchor:none]" style={{ height: slotHeight }} data-info-slot>
+          {hasCard ? (
+            <div className="flex flex-col gap-3">{cards}</div>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-ink-700 text-xs text-ink-600">
+              {t('slotEmpty')}
+            </div>
+          )}
+        </div>
       )}
 
       {kinds.has('list') && <LinkedListView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} compared={marks.refs} />}

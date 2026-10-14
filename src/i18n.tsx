@@ -78,6 +78,7 @@ const STRINGS = {
   copied: { en: 'Copied', zh: '已複製' },
   condTitle: { en: 'Condition', zh: '條件判斷' },
   calcTitle: { en: 'Calculation', zh: '計算' },
+  slotEmpty: { en: 'No condition or calculation on this line', zh: '這一行沒有條件或計算' },
   logicTitle: { en: 'Logic', zh: '邏輯運算' },
   shortAnd: { en: 'and stops at the first False — the rest is not evaluated', zh: 'and 遇到 False 就停止，後面不用算' },
   shortOr: { en: 'or stops at the first True — the rest is not evaluated', zh: 'or 遇到 True 就停止，後面不用算' },

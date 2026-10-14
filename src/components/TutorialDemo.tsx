@@ -3,6 +3,7 @@ import { ExternalLink, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { useL, useT } from '../i18n';
 import { computeCellKeys } from '../lib/cellKeys';
 import { analyzeIndexing } from '../lib/indexing';
+import { infoSlotHeight } from '../lib/infoSlot';
 import { runner } from '../runtime/runner';
 import type { Example, Tutorial } from '../tutorials';
 import type { TraceResult } from '../types';
@@ -79,6 +80,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
 
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
   const indexMap = useMemo(() => analyzeIndexing(example.code), [example.code]);
+  const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
@@ -149,7 +151,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
         <div className="scrollbar-thin h-96 overflow-auto p-3 [overflow-anchor:none] @2xl:h-auto">
           {step ? (
             <div className="origin-top-left">
-              <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap} />
+              <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap} slotHeight={slotHeight} />
             </div>
           ) : error ? (
             <p className="text-xs text-err">{error}</p>

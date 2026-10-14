@@ -228,6 +228,20 @@ async function testCondition(page) {
   record('editor shows the inline result', hint?.includes('0 < 6 → True') ? null : `got ${JSON.stringify(hint)}`);
   const outlined = await page.$$eval('main section:nth-child(2) [style*="dashed"]', (els) => els.length);
   record('compared variables are outlined', outlined >= 2 ? null : `found ${outlined} outlined elements`);
+
+  // 卡片時有時無，下面的內容（陣列、變數）位置也不能跳
+  const tops = new Set();
+  for (let i = 0; i < 15; i++) {
+    tops.add(
+      await page.evaluate(() => {
+        const slot = document.querySelector('main [data-info-slot]');
+        return slot ? Math.round(slot.nextElementSibling.getBoundingClientRect().top) : -1;
+      }),
+    );
+    await page.click('[data-action="next"]');
+    await sleep(60);
+  }
+  record('visualization content stays in place while cards change', tops.size === 1 && !tops.has(-1) ? null : `content moved: ${[...tops].join(', ')}`);
 }
 
 async function testCalc(page) {

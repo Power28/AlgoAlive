@@ -11,6 +11,7 @@ import { BLANK_CALL, BLANK_CODE, tabFromExample, useTabs } from './hooks/useTabs
 import { useLang, useT } from './i18n';
 import { computeCellKeys } from './lib/cellKeys';
 import { analyzeIndexing } from './lib/indexing';
+import { infoSlotHeight } from './lib/infoSlot';
 import { lineHint } from './components/ConditionPanel';
 import { runner, type RuntimeStatus } from './runtime/runner';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
@@ -51,6 +52,8 @@ export default function App() {
   const steps = trace?.steps ?? EMPTY_STEPS;
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
   const indexMap = useMemo(() => analyzeIndexing(run?.code ?? ''), [run?.code]);
+  // 卡片欄位高度整段執行只算一次，播放時固定
+  const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const playback = usePlayback(steps.length, trace);
   const step = steps[playback.index];
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
@@ -251,7 +254,7 @@ export default function App() {
             {run?.error && <ErrorBox message={run.error} />}
             {error && <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />}
             {step ? (
-              <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap} />
+              <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap} slotHeight={slotHeight} />
             ) : (
               !error && !run?.error && <EmptyState status={status} />
             )}
