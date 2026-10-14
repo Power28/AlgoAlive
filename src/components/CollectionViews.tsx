@@ -3,6 +3,7 @@ import type { DictValue, PyValue, SequenceValue } from '../types';
 import { formatPy, typeLabel, valueKey } from '../lib/pyValue';
 import { useT } from '../i18n';
 import { Header } from './ArrayView';
+import { useHeap } from '../lib/heapContext';
 
 const enter = { initial: { opacity: 0, x: -10 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 10 } };
 
@@ -15,14 +16,15 @@ interface DictProps {
 }
 
 export function DictView({ name, value, prev, lookups }: DictProps) {
+  const heap = useHeap();
   const t = useT();
   const prevMap = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [valueKey(k), valueKey(v)]) : []);
   const hasPrev = prev?.type === 'dict';
   const order = value.entries.map(([k]) => valueKey(k)).join('|');
 
   // 每一列都是獨立的 grid（才能各自做 layout 動畫），因此欄寬要統一算好
-  const keyCh = Math.min(40, Math.max(4, ...value.entries.map(([k]) => formatPy(k).length + (lookups.has(valueKey(k)) ? 14 : 0))));
-  const valCh = Math.min(40, Math.max(5, ...value.entries.map(([, v]) => formatPy(v).length)));
+  const keyCh = Math.min(40, Math.max(4, ...value.entries.map(([k]) => formatPy(k, heap).length + (lookups.has(valueKey(k)) ? 14 : 0))));
+  const valCh = Math.min(40, Math.max(5, ...value.entries.map(([, v]) => formatPy(v, heap).length)));
   const cols = { gridTemplateColumns: `${(keyCh * 0.6 + 1.6).toFixed(2)}rem ${(valCh * 0.6 + 1.6).toFixed(2)}rem` };
 
   return (
@@ -55,15 +57,15 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
                 }}
               >
                 <div className="flex items-center gap-2 truncate px-3 py-1.5">
-                  {formatPy(k)}
+                  {formatPy(k, heap)}
                   {lookedUpBy && (
                     <span className="rounded bg-info/20 px-1 text-[10px] text-info" title={t('lookupHint')}>
                       = {lookedUpBy.join(', ')}
                     </span>
                   )}
                 </div>
-                <div className="truncate border-l border-ink-600 px-3 py-1.5" title={formatPy(v)}>
-                  {formatPy(v)}
+                <div className="truncate border-l border-ink-600 px-3 py-1.5" title={formatPy(v, heap)}>
+                  {formatPy(v, heap)}
                 </div>
               </motion.div>
             );
@@ -76,6 +78,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
 }
 
 export function SetView({ name, value, prev }: { name: string; value: SequenceValue; prev?: PyValue }) {
+  const heap = useHeap();
   const prevKeys = new Set(prev?.type === 'set' ? prev.items.map(valueKey) : []);
   const hasPrev = prev?.type === 'set';
   const order = value.items.map(valueKey).join('|');
@@ -102,7 +105,7 @@ export function SetView({ name, value, prev }: { name: string; value: SequenceVa
                   backgroundColor: isNew ? 'rgba(44,187,93,0.18)' : '#2a2a2a',
                 }}
               >
-                {formatPy(item)}
+                {formatPy(item, heap)}
               </motion.span>
             );
           })}
@@ -119,6 +122,7 @@ interface ScalarProps {
 }
 
 export function ScalarGrid({ entries, prevVars, pointerColors }: ScalarProps) {
+  const heap = useHeap();
   const t = useT();
   if (entries.length === 0) return null;
   return (
@@ -126,7 +130,7 @@ export function ScalarGrid({ entries, prevVars, pointerColors }: ScalarProps) {
       <div className="mb-2 font-mono text-[11px] tracking-wide text-ink-400 uppercase">{t('variables')}</div>
       <div className="flex flex-wrap gap-2">
         {entries.map(([name, v]) => {
-          const text = formatPy(v);
+          const text = formatPy(v, heap);
           const changed = prevVars !== undefined && valueKey(prevVars[name]) !== valueKey(v);
           const color = pointerColors.get(name);
           return (

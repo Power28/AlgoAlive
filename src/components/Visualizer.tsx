@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react';
 import { CornerDownLeft, TriangleAlert } from 'lucide-react';
 import type { ExecutionStep, PyValue, SequenceValue } from '../types';
-import { charItems, formatPy, intValue, isDict, isGrid, isSequence, isSet } from '../lib/pyValue';
+import { charItems, formatPy, intValue, isDict, isGrid, isSequence, isSet, nodeKind } from '../lib/pyValue';
+import { HeapContext } from '../lib/heapContext';
 import { isPointerName, pointerColor, pointersFor } from '../lib/pointers';
 import type { IndexMap } from '../lib/indexing';
 import { useT } from '../i18n';
 import { ArrayView } from './ArrayView';
 import { DictView, ScalarGrid, SetView } from './CollectionViews';
 import { GridView, type GridMark } from './GridView';
+import { LinkedListView, TreeView, type NodeLabel } from './StructureViews';
 
 interface Props {
   step: ExecutionStep;
@@ -26,6 +28,21 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   const prevVars = sameFrame ? prev.variables : undefined;
   const vars = step.variables;
   const entries = Object.entries(vars);
+  const heap = step.heap ?? {};
+  // 節點 id 是整次執行穩定的，跨 frame 也能比對
+  const prevHeap = prev ? (prev.heap ?? {}) : undefined;
+
+  // 指向鏈結串列 / 樹節點的變數 → 畫成節點下方的標籤
+  const nodeLabels = new Map<string, NodeLabel[]>();
+  const structureVars = new Set<string>();
+  for (const [name, v] of entries) {
+    if (v.type !== 'ref' || !heap[v.id] || nodeKind(heap[v.id]) === 'object') continue;
+    nodeLabels.set(v.id, [...(nodeLabels.get(v.id) ?? []), { name, color: pointerColor(name) }]);
+    structureVars.add(name);
+  }
+  const kinds = new Set(Object.values(heap).map(nodeKind));
+  const trail = new Map<string, string[]>();
+  for (const ref of step.stackRefs ?? []) trail.set(ref.id, [...(trail.get(ref.id) ?? []), `${ref.name}·${ref.depth}`]);
 
   // 2D 格子：依程式碼中的 grid[a][b] 組合標出目前位置
   const grids = entries.filter(([, v]) => isGrid(v)) as [string, SequenceValue][];
@@ -80,7 +97,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   const dicts = entries.filter(([, v]) => isDict(v));
   const sets = entries.filter(([, v]) => isSet(v));
   const scalars = entries.filter(
-    ([n, v]) => !gridNames.has(n) && !shownAsCells.has(n) && !isSequence(v) && !isDict(v) && !isSet(v),
+    ([n, v]) => !gridNames.has(n) && !shownAsCells.has(n) && !structureVars.has(n) && !isSequence(v) && !isDict(v) && !isSet(v),
   );
 
   // scalar 值 → 持有該值的變數名（用來標示 dict 中被查詢的 key）
@@ -92,11 +109,12 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   }
 
   return (
+    <HeapContext.Provider value={heap}>
     <div className="flex flex-col gap-6">
       {step.event === 'return' && step.returnValue && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
-          <code className="font-semibold">{formatPy(step.returnValue)}</code>
+          <code className="font-semibold">{formatPy(step.returnValue, heap)}</code>
         </Banner>
       )}
       {step.event === 'exception' && (
@@ -105,6 +123,8 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
         </Banner>
       )}
 
+      {kinds.has('list') && <LinkedListView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} />}
+      {kinds.has('tree') && <TreeView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} />}
       {sequences.map((s, i) => (
         <ArrayView
           key={s.name}
@@ -130,6 +150,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
 
       {entries.length === 0 && step.event === 'line' && <p className="text-sm text-ink-400">{t('noLocals')}</p>}
     </div>
+    </HeapContext.Provider>
   );
 }
 

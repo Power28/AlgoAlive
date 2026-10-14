@@ -1,12 +1,19 @@
 import { ARRAY_TUTORIALS } from './arrays';
 import { GRAPH_DP_TUTORIALS } from './graph-dp';
+import { NODE_TUTORIALS } from './nodes';
 import { STRUCTURE_TUTORIALS } from './structures';
 import { TECHNIQUE_TUTORIALS } from './techniques';
 import type { Example, Tutorial } from './types';
 
 export * from './types';
 
-export const TUTORIALS: Tutorial[] = [...ARRAY_TUTORIALS, ...STRUCTURE_TUTORIALS, ...GRAPH_DP_TUTORIALS, ...TECHNIQUE_TUTORIALS];
+export const TUTORIALS: Tutorial[] = [
+  ...ARRAY_TUTORIALS,
+  ...STRUCTURE_TUTORIALS,
+  ...NODE_TUTORIALS,
+  ...GRAPH_DP_TUTORIALS,
+  ...TECHNIQUE_TUTORIALS,
+];
 
 const tutorialById = new Map(TUTORIALS.map((t) => [t.id, t]));
 const exampleIndex = new Map<string, { example: Example; tutorial: Tutorial }>();

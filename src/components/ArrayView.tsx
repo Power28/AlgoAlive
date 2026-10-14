@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import type { PyValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
+import { useHeap } from '../lib/heapContext';
 
 const MIN_CELL = 48;
 const MAX_CELL = 120;
@@ -24,9 +25,10 @@ interface Props {
 }
 
 export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers }: Props) {
+  const heap = useHeap();
   const n = items.length;
   // 格子寬度依最長內容調整（例如 BFS 佇列中的座標 tuple），整列統一寬度才能對齊指針
-  const longest = Math.max(0, ...items.map((it) => formatCell(it).length));
+  const longest = Math.max(0, ...items.map((it) => formatCell(it, heap).length));
   const CELL = Math.min(MAX_CELL, Math.max(MIN_CELL, longest * 8.5 + 14));
   const STEP = CELL + GAP;
 
@@ -81,14 +83,14 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
             {items.map((item, i) => {
               const changed = prevItems !== undefined && valueKey(prevItems[i]) !== valueKey(item);
               const accent = colorAt.get(i);
-              const text = formatCell(item);
+              const text = formatCell(item, heap);
               return (
                 <motion.div
                   key={keys[i] ?? i}
                   layout
                   layoutDependency={order}
                   transition={spring}
-                  title={formatPy(item)}
+                  title={formatPy(item, heap)}
                   className="flex shrink-0 items-center justify-center rounded-md border font-mono font-semibold"
                   style={{
                     width: CELL,

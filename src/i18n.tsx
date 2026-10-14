@@ -76,6 +76,9 @@ const STRINGS = {
   hard: { en: 'Hard', zh: '困難' },
   copy: { en: 'Copy', zh: '複製' },
   copied: { en: 'Copied', zh: '已複製' },
+  linkedList: { en: 'linked list', zh: '鏈結串列' },
+  binaryTree: { en: 'binary tree', zh: '二元樹' },
+  nodeCount: { en: '{n} nodes', zh: '{n} 個節點' },
 } satisfies Record<string, L>;
 
 export type StringKey = keyof typeof STRINGS;

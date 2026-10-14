@@ -1,6 +1,7 @@
 // 重新產生 README 用的截圖與 GIF：
 //   docs/screenshot.png   — 1. Two Sum，complement 命中 seen 字典的那一步
 //   docs/tutorials.png    — 演算法教學（滑動視窗）
+//   docs/tree.png         — 二元樹遞迴（104. Maximum Depth）
 //   docs/move-zeroes.gif  — 283. Move Zeroes 以 1× 速度完整播放
 //
 // 用法：
@@ -97,6 +98,32 @@ async function captureLibrary(browser) {
   console.log(`✓ ${path.relative(ROOT, out)}`);
 }
 
+/** 二元樹：104. Maximum Depth 遞迴到第 4 層時，外層呼叫的路徑會被標出來 */
+async function captureTree(browser) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 820, deviceScaleFactor: 2 });
+  const target = new URL(url);
+  target.searchParams.set('lang', 'en');
+  await page.goto(target.href, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('[data-runtime="ready"]', { timeout: 90_000 });
+  await page.click('[data-action="library"]');
+  await page.waitForSelector('[data-topic="tree-dfs"]');
+  await page.click('[data-topic="tree-dfs"]');
+  await page.waitForSelector('[data-example="lc104"]');
+  await page.click('[data-example="lc104"]');
+  await sleep(400);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  for (let i = 0; i < 18; i++) await page.click('[data-action="next"]');
+  await page.mouse.move(5, 815);
+  await page.evaluate(() => document.activeElement?.blur());
+  await sleep(1500);
+  const out = path.join(DOCS, 'tree.png');
+  await page.screenshot({ path: out, type: 'png' });
+  await page.close();
+  console.log(`✓ ${path.relative(ROOT, out)}`);
+}
+
 /** 以 CDP screencast 錄下播放過程：畫面有變化才送影格，並附時間戳。 */
 async function recordFrames(browser, framesDir) {
   const viewport = { width: 1200, height: 620, deviceScaleFactor: 1.5 };
@@ -156,6 +183,7 @@ const browser = await puppeteer.launch({ executablePath: findBrowser(), headless
 try {
   await captureScreenshot(browser);
   await captureLibrary(browser);
+  await captureTree(browser);
   const n = await recordFrames(browser, framesDir);
   console.log(`  recorded ${n} frames`);
 } finally {

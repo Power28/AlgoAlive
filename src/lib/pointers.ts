@@ -22,7 +22,12 @@ const FIXED_COLORS: Record<string, string> = {};
 const assign = (names: string[], color: string) => names.forEach((n) => (FIXED_COLORS[n] = color));
 assign(['left', 'l', 'lo', 'low', 'slow', 'i', 'start', 'begin', 'p1', 'p', 'read', 'head'], '#ffa116');
 assign(['right', 'r', 'hi', 'high', 'fast', 'j', 'end', 'stop', 'p2', 'q', 'write', 'tail'], '#0a84ff');
-assign(['mid', 'm', 'k', 'cur', 'curr', 'pos', 'idx', 'index'], '#2cbb5d');
+assign(['mid', 'm', 'k', 'cur', 'curr', 'pos', 'idx', 'index', 'node'], '#2cbb5d');
+// 鏈結串列 / 樹常見的節點變數
+assign(['root', 'dummy', 'l1', 'list1'], '#ffa116');
+assign(['l2', 'list2'], '#00c2c7');
+assign(['prev', 'parent'], '#b07cff');
+assign(['nxt', 'next_node', 'temp', 'tmp'], '#ff6ec7');
 const PALETTE = ['#b07cff', '#ff6ec7', '#00c2c7', '#ef4743', '#e3c34d'];
 
 export function pointerColor(name: string): string {

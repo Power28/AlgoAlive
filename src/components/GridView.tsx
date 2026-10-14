@@ -1,6 +1,7 @@
 import type { PyValue, SequenceValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { Header, STR_COLOR } from './ArrayView';
+import { useHeap } from '../lib/heapContext';
 
 const CELL = 40;
 
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function GridView({ name, value, prev, marks }: Props) {
+  const heap = useHeap();
   const rows = value.items as SequenceValue[];
   const prevRows = prev?.type === 'list' ? (prev.items as SequenceValue[]) : undefined;
   const cols = Math.max(...rows.map((r) => r.items.length));
@@ -50,11 +52,11 @@ export function GridView({ name, value, prev, marks }: Props) {
                   const prevCell = prevRows?.[r]?.items?.[c];
                   const changed = prevRows !== undefined && valueKey(prevCell) !== valueKey(cell);
                   const mark = markAt.get(`${r},${c}`);
-                  const text = formatCell(cell);
+                  const text = formatCell(cell, heap);
                   return (
                     <td
                       key={c}
-                      title={formatPy(cell)}
+                      title={formatPy(cell, heap)}
                       className="rounded-md border text-center align-middle font-semibold transition-colors duration-300"
                       style={{
                         width: CELL,

@@ -7,7 +7,16 @@ export type PyValue =
   | { type: 'str'; value: string }
   | { type: 'list' | 'tuple' | 'deque' | 'set'; items: PyValue[]; truncated?: number }
   | { type: 'dict'; entries: [PyValue, PyValue][]; cls?: string; truncated?: number }
-  | { type: 'repr'; value: string; cls?: string };
+  | { type: 'repr'; value: string; cls?: string }
+  /** 自訂類別實例（ListNode、TreeNode…）的參照，內容在 step.heap[id] */
+  | { type: 'ref'; id: string; cls: string };
+
+export interface HeapObject {
+  cls: string;
+  fields: Record<string, PyValue>;
+}
+
+export type Heap = Record<string, HeapObject>;
 
 export type SequenceValue = Extract<PyValue, { items: PyValue[] }>;
 export type DictValue = Extract<PyValue, { type: 'dict' }>;
@@ -25,6 +34,10 @@ export interface ExecutionStep {
   depth: number;
   /** 到此步為止累積的 print 輸出 */
   stdout: string;
+  /** 這一步（含外層 frame）可達的所有自訂物件 */
+  heap?: Heap;
+  /** 外層呼叫中指向節點的變數（遞迴路徑） */
+  stackRefs?: { depth: number; name: string; id: string }[];
 }
 
 export interface TraceError {
@@ -37,6 +50,7 @@ export interface TraceError {
 export interface TraceResult {
   steps: ExecutionStep[];
   returnValue?: PyValue;
+  returnHeap?: Heap;
   error?: TraceError;
   stdout: string;
 }

@@ -17,6 +17,8 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 - **零侵入追蹤**：以 `sys.settrace` 攔截使用者函式的 `line` / `return` / `exception` 事件，自動快照 `frame.f_locals`
 - **List / 字串方格 + 指針**：分析程式碼中的 `nums[i]`、`text1[i - 1]` 等索引寫法，把對應變數畫成格子下方的彩色指針（固定帶位移時標成 `i-1`）；`left`+`right`、`lo`+`hi` 等配對會畫出視窗範圍；被當成陣列走訪的字串也會拆成字元格子
 - **2D 格子**：`list[list]`（DP 表、網格 BFS、矩陣）畫成表格，並依 `grid[r][c]`、`dp[i][j]` 標出目前位置
+- **鏈結串列**：節點 → 箭頭 → 節點，`head` / `prev` / `curr` / `slow` / `fast` 等變數標在節點下方；反轉時節點會在兩條鏈之間平滑移動，剛改過的 `next` 以橘色箭頭標示，環以紅色 ↺ 標出接回位置
+- **二元樹**：自動排版的樹狀圖，翻轉等修改會讓整棵子樹滑到新位置；遞迴時以虛線節點與橘色連線標出外層呼叫的路徑（例如 `root·2` 代表第 2 層呼叫的 `root`）
 - **絲滑交換動畫**：前端追蹤每個格子的「身分」，swap / sort 時格子會真的移動（framer-motion `layout`）
 - **Dict 查表**：新增 key 綠色、值變動橘色；若某個區域變數的值正好是 dict 的 key（例如 `complement`），該列會被標示
 - **Set、純量變數、`print` 輸出、回傳值、例外** 皆有對應顯示
@@ -25,6 +27,8 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 - **自訂頁籤**：新增空白頁籤或從教學範例開啟、雙擊重新命名、關閉；程式碼與測資自動存在瀏覽器（localStorage），重新整理也不會消失
 - **中英雙語**：右上角一鍵切換介面與教學內容語言（也可用 `?lang=zh` / `?lang=en`）
 - **防呆**：超過 500 步拋出 `TimeoutError`（仍可回放已記錄的步驟）；單次執行超過 10 秒會直接重啟 Worker
+
+![二元樹遞迴：104. Maximum Depth，虛線節點與橘色連線是外層呼叫的路徑](docs/tree.png)
 
 ## 演算法教學
 
@@ -36,12 +40,14 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 |---|---|
 | 陣列與指針 | 對撞雙指針（167、11）· 快慢指針（283、26）· 滑動視窗（209、3）· 二分搜尋（704、35）· 前綴和（1480、560）· 排序與分區（75、912） |
 | 雜湊 | 雜湊表查找（1、242） |
+| 鏈結串列 | 鏈結串列基礎（206、21）· 快慢指針（876、141） |
+| 二元樹 | 樹的 DFS（104、226、112）· 樹的 BFS（102）· 二元搜尋樹（700、98） |
 | 堆疊、佇列與堆積 | 堆疊（20、150）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347） |
 | 圖與網格 | 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
 | 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
 | 其他技巧 | 貪心法（121、55）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191） |
 
-> 尚未支援：鏈結串列、二元樹、圖的節點圖示（需要追蹤物件參照並新增對應的視覺化元件）。
+> 尚未支援：一般圖（例如 133. Clone Graph 的 `Node.neighbors`）的節點連線圖，目前會以文字顯示。
 
 教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
 
@@ -65,7 +71,7 @@ npm run capture                                  # 錄線上網站
 npm run capture -- --url http://localhost:5173/  # 錄本機 dev server（先 npm run dev）
 ```
 
-會重新產生 `docs/screenshot.png`（1. Two Sum）、`docs/tutorials.png`（教學頁）與 `docs/move-zeroes.gif`（283. Move Zeroes）。需要本機安裝 Chrome 或 Edge（找不到時設定 `CHROME_PATH`），以及含 [Pillow](https://pypi.org/project/pillow/) 的 Python 3。腳本在 [scripts/](scripts/)。
+會重新產生 `docs/screenshot.png`（1. Two Sum）、`docs/tutorials.png`（教學頁）、`docs/tree.png`（二元樹遞迴）與 `docs/move-zeroes.gif`（283. Move Zeroes）。需要本機安裝 Chrome 或 Edge（找不到時設定 `CHROME_PATH`），以及含 [Pillow](https://pypi.org/project/pillow/) 的 Python 3。腳本在 [scripts/](scripts/)。
 
 ## 架構
 
@@ -80,8 +86,8 @@ src/
 │  ├─ cellKeys.ts          # 跨步驟追蹤 list 格子身分（讓 swap 變成移動動畫）
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ tutorials/              # 雙語演算法教學與範例題（19 個主題、35 題）
-├─ components/             # CodeEditor / ArrayView / GridView / CollectionViews / Visualizer
+├─ tutorials/              # 雙語演算法教學與範例題（24 個主題、45 題）
+├─ components/             # CodeEditor / ArrayView / GridView / StructureViews / CollectionViews / Visualizer
 │                          # Controls / TabBar / Library / TutorialView
 ├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）
 └─ i18n.tsx                # 中英雙語字串與語言切換
@@ -112,6 +118,18 @@ interface ExecutionStep {
 ### LeetCode `class Solution` 寫法
 
 也可以直接貼 `class Solution:` 的寫法，測試呼叫改成 `Solution().twoSum([2, 7, 11, 15], 9)` 即可（`self` 會自動隱藏）。
+
+### 鏈結串列與二元樹的測資
+
+執行環境已內建 LeetCode 的 `ListNode`、`TreeNode`，以及建立測資的輔助函式；`null` / `true` / `false` 也可以直接使用，LeetCode 的測資能原樣貼上：
+
+```python
+reverseList(build_list([1, 2, 3, 4, 5]))
+hasCycle(build_list([3, 2, 0, -4], pos=1))      # 尾端接回第 1 個節點
+maxDepth(build_tree([3, 9, 20, null, null, 15, 7]))
+```
+
+tracer 會把自訂類別的實例序列化成帶穩定 id 的參照（`{type: 'ref', id}`），每一步附上可達物件的 `heap`，以及外層呼叫中指向節點的變數（`stackRefs`），前端據此畫出串列與樹。
 
 ## License
 
