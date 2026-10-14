@@ -74,3 +74,7 @@ interface ExecutionStep {
 ### LeetCode `class Solution` 寫法
 
 也可以直接貼 `class Solution:` 的寫法，測試呼叫改成 `Solution().twoSum([2, 7, 11, 15], 9)` 即可（`self` 會自動隱藏）。
+
+## License
+
+[MIT](LICENSE)

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Bring your LeetCode algorithms to life — step-by-step Python visualizer powered by Pyodide + sys.settrace",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
