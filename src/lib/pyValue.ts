@@ -86,13 +86,19 @@ export function typeLabel(v: PyValue): string {
   return v.type;
 }
 
-export type NodeKind = 'list' | 'tree' | 'object';
+export type NodeKind = 'list' | 'tree' | 'graph' | 'object';
 
-/** 依欄位判斷節點種類：有 next → 鏈結串列；有 left / right → 二元樹。 */
+const GRAPH_FIELDS = /^(neighbors|neighbours|children|adj|adjacent|edges|nbrs)$/i;
+
+/** 依欄位判斷節點種類：有 next → 鏈結串列；有 left / right → 二元樹；有節點清單（neighbors…）→ 圖。 */
 export function nodeKind(obj: HeapObject): NodeKind {
   const f = obj.fields;
   if ('left' in f || 'right' in f) return 'tree';
   if ('next' in f) return 'list';
+  for (const [name, v] of Object.entries(f)) {
+    const items = 'items' in v ? v.items : null;
+    if (items && (GRAPH_FIELDS.test(name) || (items.length > 0 && items.every((x) => x.type === 'ref')))) return 'graph';
+  }
   return 'object';
 }
 
@@ -136,6 +142,10 @@ function formatRef(id: string, cls: string, heap?: Heap): string {
     }
     while (out.at(-1) === 'null') out.pop();
     return `[${out.join(', ')}]`;
+  }
+  if (kind === 'graph') {
+    const val = obj.fields.val;
+    return `${obj.cls}(${val ? formatCell(val) : ''})`;
   }
   const fields = Object.entries(obj.fields).map(([k, x]) => `${k}=${x.type === 'ref' ? `${x.cls}(…)` : formatPy(x)}`);
   return `${obj.cls}(${fields.join(', ')})`;

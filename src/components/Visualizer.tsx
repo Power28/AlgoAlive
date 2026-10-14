@@ -10,6 +10,8 @@ import { ArrayView } from './ArrayView';
 import { DictView, ScalarGrid, SetView } from './CollectionViews';
 import { GridView, type GridMark } from './GridView';
 import { LinkedListView, TreeView, type NodeLabel } from './StructureViews';
+import { GraphView } from './GraphView';
+import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
 interface Props {
   step: ExecutionStep;
@@ -45,7 +47,23 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   for (const ref of step.stackRefs ?? []) trail.set(ref.id, [...(trail.get(ref.id) ?? []), `${ref.name}·${ref.depth}`]);
 
   // 2D 格子：依程式碼中的 grid[a][b] 組合標出目前位置
-  const grids = entries.filter(([, v]) => isGrid(v)) as [string, SequenceValue][];
+  // 一般圖：自訂節點物件（neighbors…）或名為 graph / adj 的鄰接串列
+  const graphs: { graph: GraphModel; prev?: GraphModel }[] = [];
+  const graphVars = new Set<string>();
+  if (kinds.has('graph')) {
+    const g = objectGraph(heap)!;
+    graphs.push({ graph: g, prev: prev?.heap ? (objectGraph(prev.heap) ?? undefined) : undefined });
+  }
+  for (const [name, v] of entries) {
+    if (!isAdjacencyName(name)) continue;
+    const g = adjacencyGraph(name, v);
+    if (!g) continue;
+    const p = prevVars?.[name];
+    graphs.push({ graph: g, prev: p ? (adjacencyGraph(name, p) ?? undefined) : undefined });
+    graphVars.add(name);
+  }
+
+  const grids = entries.filter(([n, v]) => !graphVars.has(n) && isGrid(v)) as [string, SequenceValue][];
   const gridVars = new Set<string>();
   const gridMarks = new Map<string, GridMark[]>();
   for (const [name, v] of grids) {
@@ -67,6 +85,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   const shownAsCells = new Set<string>();
   for (const [name, v] of entries) {
     const p = prevVars?.[name];
+    if (graphVars.has(name)) continue;
     if (isSequence(v) && !isGrid(v)) {
       sequences.push({ name, kind: v.type, items: v.items, truncated: v.truncated, prevItems: p && isSequence(p) ? p.items : undefined });
       shownAsCells.add(name);
@@ -94,7 +113,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   for (const name of gridVars) if (!pointerColors.has(name)) pointerColors.set(name, pointerColor(name));
 
   const gridNames = new Set(grids.map(([n]) => n));
-  const dicts = entries.filter(([, v]) => isDict(v));
+  const dicts = entries.filter(([n, v]) => !graphVars.has(n) && isDict(v));
   const sets = entries.filter(([, v]) => isSet(v));
   const scalars = entries.filter(
     ([n, v]) => !gridNames.has(n) && !shownAsCells.has(n) && !structureVars.has(n) && !isSequence(v) && !isDict(v) && !isSet(v),
@@ -125,6 +144,9 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
 
       {kinds.has('list') && <LinkedListView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} />}
       {kinds.has('tree') && <TreeView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} />}
+      {graphs.map(({ graph, prev: prevGraph }) => (
+        <GraphView key={graph.name} graph={graph} prev={prevGraph} overlay={graphOverlay(graph, vars, graphVars)} />
+      ))}
       {sequences.map((s, i) => (
         <ArrayView
           key={s.name}

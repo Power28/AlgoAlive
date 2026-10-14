@@ -2,6 +2,7 @@
 //   docs/screenshot.png   — 1. Two Sum，complement 命中 seen 字典的那一步
 //   docs/tutorials.png    — 演算法教學（滑動視窗）
 //   docs/tree.png         — 二元樹遞迴（104. Maximum Depth）
+//   docs/graph.png        — 一般圖（785. Is Graph Bipartite?）
 //   docs/move-zeroes.gif  — 283. Move Zeroes 以 1× 速度完整播放
 //
 // 用法：
@@ -98,8 +99,8 @@ async function captureLibrary(browser) {
   console.log(`✓ ${path.relative(ROOT, out)}`);
 }
 
-/** 二元樹：104. Maximum Depth 遞迴到第 4 層時，外層呼叫的路徑會被標出來 */
-async function captureTree(browser) {
+/** 從教學庫開啟範例、前進 steps 步後截圖（二元樹遞迴、一般圖等） */
+async function captureExample(browser, { topic, example, steps, file }) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 820, deviceScaleFactor: 2 });
   const target = new URL(url);
@@ -107,18 +108,18 @@ async function captureTree(browser) {
   await page.goto(target.href, { waitUntil: 'networkidle0' });
   await page.waitForSelector('[data-runtime="ready"]', { timeout: 90_000 });
   await page.click('[data-action="library"]');
-  await page.waitForSelector('[data-topic="tree-dfs"]');
-  await page.click('[data-topic="tree-dfs"]');
-  await page.waitForSelector('[data-example="lc104"]');
-  await page.click('[data-example="lc104"]');
+  await page.waitForSelector(`[data-topic="${topic}"]`);
+  await page.click(`[data-topic="${topic}"]`);
+  await page.waitForSelector(`[data-example="${example}"]`);
+  await page.click(`[data-example="${example}"]`);
   await sleep(400);
   await page.click('[data-action="visualize"]');
   await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
-  for (let i = 0; i < 18; i++) await page.click('[data-action="next"]');
+  for (let i = 0; i < steps; i++) await page.click('[data-action="next"]');
   await page.mouse.move(5, 815);
   await page.evaluate(() => document.activeElement?.blur());
   await sleep(1500);
-  const out = path.join(DOCS, 'tree.png');
+  const out = path.join(DOCS, file);
   await page.screenshot({ path: out, type: 'png' });
   await page.close();
   console.log(`✓ ${path.relative(ROOT, out)}`);
@@ -183,7 +184,10 @@ const browser = await puppeteer.launch({ executablePath: findBrowser(), headless
 try {
   await captureScreenshot(browser);
   await captureLibrary(browser);
-  await captureTree(browser);
+  // 104. Maximum Depth 遞迴到第 4 層：外層呼叫的路徑會被標出來
+  await captureExample(browser, { topic: 'tree-dfs', example: 'lc104', steps: 18, file: 'tree.png' });
+  // 785. Is Graph Bipartite?：節點依 color 著色、目前走的邊高亮
+  await captureExample(browser, { topic: 'graph-traversal', example: 'lc785', steps: 31, file: 'graph.png' });
   const n = await recordFrames(browser, framesDir);
   console.log(`  recorded ${n} frames`);
 } finally {

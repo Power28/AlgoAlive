@@ -1,5 +1,6 @@
 import { ARRAY_TUTORIALS } from './arrays';
 import { GRAPH_DP_TUTORIALS } from './graph-dp';
+import { GRAPH_TUTORIALS } from './graphs';
 import { NODE_TUTORIALS } from './nodes';
 import { STRUCTURE_TUTORIALS } from './structures';
 import { TECHNIQUE_TUTORIALS } from './techniques';
@@ -11,6 +12,7 @@ export const TUTORIALS: Tutorial[] = [
   ...ARRAY_TUTORIALS,
   ...STRUCTURE_TUTORIALS,
   ...NODE_TUTORIALS,
+  ...GRAPH_TUTORIALS,
   ...GRAPH_DP_TUTORIALS,
   ...TECHNIQUE_TUTORIALS,
 ];

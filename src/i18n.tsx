@@ -79,6 +79,10 @@ const STRINGS = {
   linkedList: { en: 'linked list', zh: '鏈結串列' },
   binaryTree: { en: 'binary tree', zh: '二元樹' },
   nodeCount: { en: '{n} nodes', zh: '{n} 個節點' },
+  graphMeta: { en: '{n} nodes · {e} edges', zh: '{n} 個節點 · {e} 條邊' },
+  graphVisited: { en: 'visited', zh: '已拜訪' },
+  graphFrontier: { en: 'in queue / stack', zh: '在佇列 / 堆疊中' },
+  graphActiveEdge: { en: 'current edge / path', zh: '目前的邊 / 路徑' },
 } satisfies Record<string, L>;
 
 export type StringKey = keyof typeof STRINGS;

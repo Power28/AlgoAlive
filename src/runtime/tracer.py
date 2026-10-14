@@ -48,6 +48,24 @@ class TreeNode:
         return f"TreeNode({self.val})"
 
 
+class Node:
+    # LeetCode 圖題（133. Clone Graph）的節點
+    def __init__(self, val=0, neighbors=None):
+        self.val = val
+        self.neighbors = neighbors if neighbors is not None else []
+
+    def __repr__(self):
+        return f"Node({self.val})"
+
+
+def build_graph(adj_list):
+    # LeetCode 的鄰接串列（1-indexed）[[2, 4], [1, 3], ...] → 回傳節點 1
+    nodes = [Node(i + 1) for i in range(len(adj_list))]
+    for node, nbrs in zip(nodes, adj_list):
+        node.neighbors = [nodes[j - 1] for j in nbrs]
+    return nodes[0] if nodes else None
+
+
 def build_list(values, pos=-1):
     # [1, 2, 3] → 1 -> 2 -> 3；pos >= 0 時讓尾端接回第 pos 個節點形成環
     dummy = tail = ListNode()
