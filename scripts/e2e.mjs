@@ -183,6 +183,28 @@ async function testTabs(page, url) {
   record('closing a tab removes it', closed.includes('My practice') ? `got ${JSON.stringify(closed)}` : null);
 }
 
+async function testDemo(page) {
+  console.log('Tutorial demo');
+  await page.click('[data-action="library"]');
+  await page.waitForSelector('[data-topic="tree-dfs"]');
+  await page.click('[data-topic="tree-dfs"]');
+  const progress = () => page.$eval('[data-demo-progress]', (el) => el.textContent.trim());
+  // 背景執行範例需要一點時間，之後應該自動往前播放
+  await page.waitForFunction(() => /^\d+ \/ [1-9]\d*$/.test(document.querySelector('[data-demo-progress]')?.textContent.trim() ?? ''), {
+    timeout: 30_000,
+  });
+  const first = await progress();
+  await sleep(2500);
+  const later = await progress();
+  const step = (s) => Number(s.split('/')[0]);
+  record('demo runs the example and auto-plays', step(later) > step(first) ? null : `progress stuck at ${first} → ${later}`);
+  const hasTree = await page.$eval('[data-demo]', (el) => el.innerText.includes('TreeNode'));
+  record('demo shows the tree view', hasTree ? null : 'no TreeNode view inside the demo');
+  const busy = await page.$eval('[data-action="visualize"]', (b) => b.disabled);
+  record('background demo runs do not block Visualize', busy ? 'Visualize button is disabled' : null);
+  await page.keyboard.press('Escape');
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -211,6 +233,7 @@ try {
 
   await testTabs(page, server.url);
   await testLanguage(page);
+  await testDemo(page);
   await testExamples(page, expected);
 
   console.log('Console');

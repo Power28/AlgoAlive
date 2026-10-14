@@ -55,6 +55,12 @@ body {
   border-left: 8px solid var(--color-brand);
 }
 
+/* 程式碼不使用連字，>= 、== 、-> 照原樣顯示，初學者才不會誤讀 */
+pre,
+code {
+  font-variant-ligatures: none;
+}
+
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--color-ink-600) transparent;

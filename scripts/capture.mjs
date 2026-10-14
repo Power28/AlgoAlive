@@ -73,7 +73,11 @@ async function captureLibrary(browser) {
   await page.waitForSelector('[data-topic="sliding-window"]');
   await page.click('[data-topic="sliding-window"]');
   await page.mouse.move(5, 815);
-  await sleep(600);
+  // 等動畫示範跑完範例、自動播放幾步，截圖才有內容
+  await page.waitForFunction(() => /^\d+ \/ [1-9]/.test(document.querySelector('[data-demo-progress]')?.textContent.trim() ?? ''), {
+    timeout: 60_000,
+  });
+  await sleep(6000);
   const out = path.join(DOCS, 'tutorials.png');
   await page.screenshot({ path: out, type: 'png' });
   await page.close();

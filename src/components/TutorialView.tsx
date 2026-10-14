@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Lightbulb, ListChecks, Timer } from 'lucide-react';
 import { useL, useT, type L } from '../i18n';
 import type { Difficulty, Example, Tutorial } from '../tutorials';
+import { TutorialDemo } from './TutorialDemo';
 
 /** 支援 **粗體** 與 `程式碼` 的簡易行內格式 */
 export function Rich({ text }: { text: string }) {
@@ -106,6 +107,9 @@ export function TutorialView({ tutorial, onOpenExample, currentExampleId }: Prop
       <p className="mt-2 text-sm leading-relaxed text-ink-300">
         <Rich text={l(tutorial.tagline)} />
       </p>
+
+      {/* 切換主題時重新掛載，回到該主題的第一個範例 */}
+      <TutorialDemo key={tutorial.id} tutorial={tutorial} onOpenExample={onOpenExample} />
 
       <Section icon={<ListChecks size={14} />} title={t('whenToUse')}>
         <BulletList items={tutorial.whenToUse} />
