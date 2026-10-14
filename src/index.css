@@ -44,6 +44,24 @@ body {
   background: rgba(239, 71, 67, 0.18);
   border-left: 3px solid var(--color-err);
 }
+/* 條件式代入數值後的結果（行尾提示） */
+.aa-hint-true,
+.aa-hint-false,
+.aa-hint-unknown {
+  font-style: italic;
+  opacity: 0.9;
+}
+/* Monaco 的語法上色會蓋過一般 class，提示的顏色要提高優先權 */
+.aa-hint-true {
+  color: var(--color-ok) !important;
+}
+.aa-hint-false {
+  color: var(--color-err) !important;
+}
+.aa-hint-unknown {
+  color: var(--color-ink-400) !important;
+}
+
 .aa-glyph-current::before {
   content: '';
   display: block;

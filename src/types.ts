@@ -38,6 +38,45 @@ export interface ExecutionStep {
   heap?: Heap;
   /** 外層呼叫中指向節點的變數（遞迴路徑） */
   stackRefs?: { depth: number; name: string; id: string }[];
+  /** 這一行若是條件式（if / while / return a < b…），其求值過程 */
+  condition?: Condition;
+}
+
+/** 比較運算元在畫面上的位置，用來替被比較的格子 / 變數 / 節點加框 */
+export interface TermLocation {
+  var?: string;
+  index?: number;
+  col?: number;
+  ref?: string;
+}
+
+export interface ConditionTerm {
+  src: string;
+  /** 顯示用：短的純量顯示值，否則為原本的寫法 */
+  display: string;
+  value?: PyValue;
+  loc?: TermLocation;
+}
+
+export interface ConditionPart {
+  /** cmp：比較運算；truth：取真假值（例如 while queue: 的 queue） */
+  kind: 'cmp' | 'truth';
+  src: string;
+  /** and / or 短路，沒有被求值 */
+  skipped?: boolean;
+  terms?: ConditionTerm[];
+  ops?: string[];
+  display?: string;
+  /** null：含有不能安全求值的部分（例如 stack.pop()） */
+  result?: boolean | null;
+}
+
+export interface Condition {
+  src: string;
+  /** 代入數值後的整個條件式，例如 "0 < 6"、"stack and …" */
+  display: string;
+  result: boolean | null;
+  parts: ConditionPart[];
 }
 
 export interface TraceError {

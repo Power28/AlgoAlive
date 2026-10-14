@@ -2,6 +2,7 @@ import { LayoutGroup, motion } from 'framer-motion';
 import type { Heap } from '../types';
 import { formatCell, formatPy, nodeKind, refTarget, valueKey } from '../lib/pyValue';
 import { useT } from '../i18n';
+import { compareOutline } from './ConditionPanel';
 import { Header } from './ArrayView';
 
 /** 指向某節點的變數標籤 */
@@ -17,6 +18,8 @@ interface Props {
   labels: Map<string, NodeLabel[]>;
   /** 節點 id → 外層呼叫中指向它的變數（例如 "root·2"），標出遞迴路徑 */
   trail?: Map<string, string[]>;
+  /** 目前條件式正在比較的節點（例如 l1.val <= l2.val） */
+  compared?: Set<string>;
 }
 
 const spring = { type: 'spring', stiffness: 380, damping: 34 } as const;
@@ -101,7 +104,7 @@ function buildChains(heap: Heap): Chain[] {
   return chains.sort((a, b) => Math.min(...a.ids.map(idNum)) - Math.min(...b.ids.map(idNum)));
 }
 
-export function LinkedListView({ heap, prevHeap, labels, trail }: Props) {
+export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Props) {
   const t = useT();
   const chains = buildChains(heap);
   if (!chains.length) return null;
@@ -128,7 +131,7 @@ export function LinkedListView({ heap, prevHeap, labels, trail }: Props) {
                       <div
                         title={formatPy(val ?? { type: 'none' }, heap)}
                         className="flex h-11 min-w-11 items-center justify-center rounded-lg border-2 px-2 font-mono text-[15px] font-semibold transition-colors duration-300"
-                        style={nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id))}
+                        style={{ ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id)), ...compareOutline(!!compared?.has(id)) }}
                       >
                         {val ? formatCell(val, heap) : '·'}
                       </div>
@@ -235,7 +238,7 @@ function layoutTrees(heap: Heap): { placed: Placed[]; width: number; height: num
   return { placed, width: Math.max(1, col) * X_STEP, height: (maxDepth + 1) * Y_STEP };
 }
 
-export function TreeView({ heap, prevHeap, labels, trail }: Props) {
+export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
   const t = useT();
   const { placed, width, height } = layoutTrees(heap);
   if (!placed.length) return null;
@@ -284,7 +287,7 @@ export function TreeView({ heap, prevHeap, labels, trail }: Props) {
                 <div
                   title={formatPy(val ?? { type: 'none' }, heap)}
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"
-                  style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)) }}
+                  style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)), ...compareOutline(!!compared?.has(p.id)) }}
                 >
                   {val ? formatCell(val, heap) : '·'}
                 </div>

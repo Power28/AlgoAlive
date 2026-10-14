@@ -14,6 +14,8 @@ interface Props {
   /** 上一步執行過的行 */
   prevLine?: number;
   errorLine?: number | null;
+  /** 目前行若是條件式，在行尾顯示代入數值後的結果，例如 "0 < 6 → True" */
+  hint?: { text: string; result: boolean | null };
   onRun: () => void;
 }
 
@@ -32,7 +34,7 @@ const defineTheme: BeforeMount = (monaco) => {
   });
 };
 
-export function CodeEditor({ path, value, onChange, currentLine, prevLine, errorLine, onRun }: Props) {
+export function CodeEditor({ path, value, onChange, currentLine, prevLine, errorLine, hint, onRun }: Props) {
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const decorations = useRef<ReturnType<MonacoEditor['createDecorationsCollection']> | null>(null);
@@ -59,12 +61,27 @@ export function CodeEditor({ path, value, onChange, currentLine, prevLine, error
     if (prevLine && prevLine !== currentLine) list.push(lineDeco(prevLine, 'aa-prev-line'));
     if (currentLine) list.push(lineDeco(currentLine, 'aa-current-line', 'aa-glyph-current'));
     if (errorLine) list.push(lineDeco(errorLine, 'aa-error-line'));
+    const model = editor.getModel();
+    if (hint && currentLine && model && currentLine <= model.getLineCount()) {
+      const end = model.getLineMaxColumn(currentLine);
+      list.push({
+        range: new monaco.Range(currentLine, end, currentLine, end),
+        options: {
+          // 空範圍的裝飾預設不畫，要明確打開才會顯示行尾提示
+          showIfCollapsed: true,
+          after: {
+            content: `    ${hint.text}`,
+            inlineClassName: hint.result === true ? 'aa-hint-true' : hint.result === false ? 'aa-hint-false' : 'aa-hint-unknown',
+          },
+        },
+      });
+    }
     decorations.current.set(list);
     const focus = currentLine ?? errorLine;
     if (focus) editor.revealLineInCenterIfOutsideViewport(focus);
   };
 
-  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine]);
+  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine, hint?.text, hint?.result]);
 
   return (
     <Editor

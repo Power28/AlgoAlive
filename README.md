@@ -12,7 +12,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 
 ## 功能
 
-![AlgoAlive 執行 1. Two Sum：complement 命中 seen 字典的那一步](docs/screenshot.png)
+![AlgoAlive 執行 1. Two Sum：條件判斷 2 in seen → True，seen 字典中被查到的 key 同時被標出](docs/screenshot.png)
 
 - **零侵入追蹤**：以 `sys.settrace` 攔截使用者函式的 `line` / `return` / `exception` 事件，自動快照 `frame.f_locals`
 - **List / 字串方格 + 指針**：分析程式碼中的 `nums[i]`、`text1[i - 1]` 等索引寫法，把對應變數畫成格子下方的彩色指針（固定帶位移時標成 `i-1`）；`left`+`right`、`lo`+`hi` 等配對會畫出視窗範圍；被當成陣列走訪的字串也會拆成字元格子
@@ -21,6 +21,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 - **二元樹**：自動排版的樹狀圖，翻轉等修改會讓整棵子樹滑到新位置；遞迴時以虛線節點與橘色連線標出外層呼叫的路徑（例如 `root·2` 代表第 2 層呼叫的 `root`）
 - **一般圖**：自訂節點（`Node.neighbors`）或名為 `graph` / `adj` 的鄰接串列（`dict` 或 `list[list]`，可帶權重 `(v, w)`）畫成節點連線圖；`node` / `nxt` 等變數標在節點上並高亮目前走的邊，`visited` 填色、`queue` / `stack` 中的節點虛線框、`path` 的邊高亮，`indegree` / `dist` 等每個節點一個值的陣列顯示成旁邊的小標籤，`color` 陣列直接替節點著色
 - **絲滑交換動畫**：前端追蹤每個格子的「身分」，swap / sort 時格子會真的移動（framer-motion `layout`）
+- **條件判斷**：執行到 `if` / `while` / `return a < b` 等條件式時，程式碼行尾直接顯示代入數值後的結果（例如 `0 < 6 → True`），視覺化面板上方的「條件判斷」卡片逐項列出每個比較，`and` / `or` 被短路跳過的部分會標成灰色；被比較的格子、變數、節點加上紫色虛線框。含有可能修改資料的呼叫（例如 `stack.pop()`）的條件不會預先求值
 - **Dict 查表**：新增 key 綠色、值變動橘色；若某個區域變數的值正好是 dict 的 key（例如 `complement`），該列會被標示
 - **Set、純量變數、`print` 輸出、回傳值、例外** 皆有對應顯示
 - **播放控制**：上一步 / 下一步 / 播放暫停 / 時間軸拖曳 / 0.5×–4× 速度；鍵盤 `←` `→` `Space` `Home` `End`

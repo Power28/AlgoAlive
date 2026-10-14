@@ -3,10 +3,12 @@
 使用 sys.settrace 攔截使用者函式每一行的執行狀態，序列化成 JSON 回傳給前端。
 只追蹤 filename == USER_FILE 的 frame，因此 typing / collections 等內部呼叫不會被記錄。
 """
-import sys
+import ast
 import io
 import json
 import math
+import operator
+import sys
 import types
 import collections
 
@@ -221,6 +223,191 @@ def _ser(v, ctx=None, depth=0, seen=None):
     return {"type": "repr", "value": r, "cls": type(v).__name__}
 
 
+# ─────────────── 條件式（比較運算）的求值紀錄 ───────────────
+
+COND_FILE = "<condition>"
+# 求值時可以呼叫的函式：都不會修改資料
+_PURE_CALLS = {
+    "len", "abs", "min", "max", "sum", "int", "float", "str", "bool", "ord", "chr",
+    "sorted", "tuple", "list", "set", "isinstance", "round", "any", "all",
+}
+_UNSAFE_NODES = (
+    ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom, ast.Lambda,
+    ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+)
+_CMP_OPS = {
+    ast.Eq: ("==", operator.eq), ast.NotEq: ("!=", operator.ne),
+    ast.Lt: ("<", operator.lt), ast.LtE: ("<=", operator.le),
+    ast.Gt: (">", operator.gt), ast.GtE: (">=", operator.ge),
+    ast.Is: ("is", operator.is_), ast.IsNot: ("is not", operator.is_not),
+    ast.In: ("in", lambda a, b: a in b), ast.NotIn: ("not in", lambda a, b: a not in b),
+}
+_MAX_DISPLAY = 14
+
+
+class _Unknown(Exception):
+    """運算元含有不能安全求值的部分（例如 stack.pop()），或求值時出錯"""
+
+
+def _is_pure(node):
+    for n in ast.walk(node):
+        if isinstance(n, _UNSAFE_NODES):
+            return False
+        if isinstance(n, ast.Call) and not (isinstance(n.func, ast.Name) and n.func.id in _PURE_CALLS):
+            return False
+    return True
+
+
+class _CondAnalyzer:
+    """解析使用者程式碼，找出每一行敘述的條件式，並在執行到該行時算出每個比較的值。"""
+
+    def __init__(self, code, registry):
+        self.code = code
+        self.registry = registry
+        self.by_line = {}
+        self.compiled = {}
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.stmt) or node.lineno in self.by_line:
+                continue
+            expr = self._condition_of(node)
+            if expr is not None:
+                self.by_line[node.lineno] = expr
+
+    @staticmethod
+    def _condition_of(stmt):
+        if isinstance(stmt, (ast.If, ast.While, ast.Assert)):
+            return stmt.test
+        value = getattr(stmt, "value", None)
+        if isinstance(stmt, (ast.Return, ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Expr)) and value is not None:
+            if isinstance(value, ast.IfExp):
+                return value.test
+            if isinstance(value, (ast.Compare, ast.BoolOp)) or (isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not)):
+                return value
+        return None
+
+    def _src(self, node):
+        return ast.get_source_segment(self.code, node) or ast.unparse(node)
+
+    def _eval(self, node, frame):
+        if not _is_pure(node):
+            raise _Unknown()
+        key = id(node)
+        if key not in self.compiled:
+            self.compiled[key] = compile(ast.Expression(node), COND_FILE, "eval")
+        try:
+            return eval(self.compiled[key], frame.f_globals, dict(frame.f_locals))
+        except Exception as exc:  # 例如 stack 為空時的 stack[-1]
+            raise _Unknown() from exc
+
+    def _short(self, src, value):
+        """顯示用：短的純量顯示值，其他（容器、物件）顯示原本的寫法"""
+        if value is None or isinstance(value, (bool, int, float, str)):
+            r = repr(value)
+            if len(r) <= _MAX_DISPLAY:
+                return r
+        return src
+
+    def _locate(self, node, frame):
+        """運算元在畫面上對應的位置：變數、序列的某格、grid 的某格、某個節點"""
+        try:
+            if isinstance(node, ast.Name):
+                return {"var": node.id}
+            if isinstance(node, ast.Subscript):
+                idx = self._eval(node.slice, frame)
+                if isinstance(node.value, ast.Name) and isinstance(idx, int):
+                    return {"var": node.value.id, "index": idx}
+                inner = node.value
+                if isinstance(inner, ast.Subscript) and isinstance(inner.value, ast.Name) and isinstance(idx, int):
+                    row = self._eval(inner.slice, frame)
+                    if isinstance(row, int):
+                        return {"var": inner.value.id, "index": row, "col": idx}
+            if isinstance(node, ast.Attribute):
+                obj = self._eval(node.value, frame)
+                if _is_object(obj):
+                    return {"ref": self.registry.sid(obj)}
+        except _Unknown:
+            pass
+        return None
+
+    def _term(self, node, frame, ctx):
+        src = self._src(node)
+        term = {"src": src}
+        loc = self._locate(node, frame)
+        if loc:
+            term["loc"] = loc
+        try:
+            value = self._eval(node, frame)
+        except _Unknown:
+            term["display"] = src
+            return term, None, False
+        term["value"] = _ser(value, ctx)
+        term["display"] = self._short(src, value)
+        return term, value, True
+
+    def _walk(self, node, frame, ctx, parts, skip):
+        """回傳 (顯示字串, 結果)；結果 None 代表無法得知或被短路跳過"""
+        if isinstance(node, ast.BoolOp):
+            is_and = isinstance(node.op, ast.And)
+            shown, result = [], None
+            for value in node.values:
+                text, r = self._walk(value, frame, ctx, parts, skip)
+                shown.append(text)
+                if skip:
+                    continue
+                result = r
+                if r is None or (is_and and not r) or (not is_and and r):
+                    skip = True  # 短路：後面的不會被求值
+            return (" and " if is_and else " or ").join(shown), (None if result is None else bool(result))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            text, r = self._walk(node.operand, frame, ctx, parts, skip)
+            return f"not {text}", (None if r is None else not r)
+        if isinstance(node, ast.Compare):
+            src = self._src(node)
+            if skip:
+                parts.append({"kind": "cmp", "src": src, "skipped": True})
+                return "…", None
+            terms, values, ok = [], [], True
+            for operand in [node.left, *node.comparators]:
+                term, value, known = self._term(operand, frame, ctx)
+                terms.append(term)
+                values.append(value)
+                ok = ok and known
+            ops = [_CMP_OPS[type(o)] for o in node.ops]
+            result = None
+            if ok:
+                try:
+                    result = all(fn(values[i], values[i + 1]) for i, (_, fn) in enumerate(ops))
+                except Exception:
+                    result = None
+            text = terms[0]["display"] + "".join(f" {sym} {t['display']}" for (sym, _), t in zip(ops, terms[1:]))
+            parts.append({"kind": "cmp", "src": src, "terms": terms, "ops": [sym for sym, _ in ops], "display": text, "result": result})
+            return text, result
+        # 其他運算式（例如 while queue: 的 queue）：看它的真假值
+        src = self._src(node)
+        if skip:
+            parts.append({"kind": "truth", "src": src, "skipped": True})
+            return "…", None
+        term, value, known = self._term(node, frame, ctx)
+        result = bool(value) if known else None
+        parts.append({"kind": "truth", "src": src, "terms": [term], "display": term["display"], "result": result})
+        return term["display"], result
+
+    def evaluate(self, frame, ctx):
+        expr = self.by_line.get(frame.f_lineno)
+        if expr is None:
+            return None
+        parts = []
+        try:
+            display, result = self._walk(expr, frame, ctx, parts, False)
+        except Exception:
+            return None
+        return {"src": self._src(expr), "display": display, "result": result, "parts": parts}
+
+
 def _visible_locals(frame):
     for name, value in frame.f_locals.items():
         # ".0" 之類是 comprehension / generator 的內部迭代器變數
@@ -276,6 +463,7 @@ def algoalive_run(code, call_src):
     stdout = io.StringIO()
     registry = _Registry()
     no_value = object()
+    conditions = _CondAnalyzer(code, registry)
 
     def record(frame, event, ret=no_value, **extra):
         if len(steps) >= MAX_STEPS:
@@ -296,6 +484,10 @@ def algoalive_run(code, call_src):
             step["stackRefs"] = stack_refs
         if ret is not no_value:
             step["returnValue"] = _ser(ret, ctx)
+        if event == "line":
+            cond = conditions.evaluate(frame, ctx)
+            if cond:
+                step["condition"] = cond
         heap = ctx.drain()
         if heap:
             step["heap"] = heap

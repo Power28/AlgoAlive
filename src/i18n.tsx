@@ -76,6 +76,13 @@ const STRINGS = {
   hard: { en: 'Hard', zh: '困難' },
   copy: { en: 'Copy', zh: '複製' },
   copied: { en: 'Copied', zh: '已複製' },
+  condTitle: { en: 'Condition', zh: '條件判斷' },
+  condSkipped: { en: 'skipped (short-circuit)', zh: '跳過（短路）' },
+  condUnknown: { en: 'not evaluated', zh: '未求值' },
+  condUnknownHint: {
+    en: 'Contains a call that might change data (e.g. stack.pop()), so it is not evaluated ahead of time',
+    zh: '含有可能修改資料的呼叫（例如 stack.pop()），所以不預先求值',
+  },
   demo: { en: 'Animated walkthrough', zh: '動畫示範' },
   demoLoading: { en: 'Running the example…', zh: '正在執行範例…' },
   play: { en: 'Play', zh: '播放' },

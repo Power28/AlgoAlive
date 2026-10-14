@@ -50,9 +50,10 @@ async function openApp(browser, viewport, exampleId) {
 
 async function captureScreenshot(browser) {
   const page = await openApp(browser, { width: 1440, height: 820, deviceScaleFactor: 2 }, 'lc1');
-  // 跳到倒數第二步：complement 命中 seen 字典的那一刻
+  // 跳到倒數第三步：第 5 行 `if complement in seen` 判斷成立的那一刻（條件卡片 + seen 字典查表）
   await page.click('[data-action="last"]');
   await sleep(300);
+  await page.click('[data-action="prev"]');
   await page.click('[data-action="prev"]');
   await page.evaluate(() => document.activeElement?.blur());
   await sleep(2000);

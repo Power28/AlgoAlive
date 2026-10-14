@@ -2,6 +2,7 @@ import type { PyValue, SequenceValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { Header, STR_COLOR } from './ArrayView';
 import { useHeap } from '../lib/heapContext';
+import { compareOutline } from './ConditionPanel';
 
 const CELL = 40;
 
@@ -18,9 +19,11 @@ interface Props {
   value: SequenceValue;
   prev?: PyValue;
   marks: GridMark[];
+  /** 目前條件式正在比較的格子："row:col" */
+  compared?: Set<string>;
 }
 
-export function GridView({ name, value, prev, marks }: Props) {
+export function GridView({ name, value, prev, marks, compared }: Props) {
   const heap = useHeap();
   const rows = value.items as SequenceValue[];
   const prevRows = prev?.type === 'list' ? (prev.items as SequenceValue[]) : undefined;
@@ -67,6 +70,7 @@ export function GridView({ name, value, prev, marks }: Props) {
                         borderColor: mark?.color ?? '#3e3e3e',
                         boxShadow: mark ? `0 0 0 1px ${mark.color}66, 0 0 12px ${mark.color}33` : undefined,
                         backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a',
+                        ...compareOutline(!!compared?.has(`${r}:${c}`)),
                       }}
                     >
                       {text}

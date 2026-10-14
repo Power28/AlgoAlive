@@ -11,6 +11,7 @@ import { BLANK_CALL, BLANK_CODE, tabFromExample, useTabs } from './hooks/useTabs
 import { useLang, useT } from './i18n';
 import { computeCellKeys } from './lib/cellKeys';
 import { analyzeIndexing } from './lib/indexing';
+import { conditionHint } from './components/ConditionPanel';
 import { runner, type RuntimeStatus } from './runtime/runner';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
@@ -198,6 +199,7 @@ export default function App() {
                 currentLine={step?.lineNumber}
                 prevLine={prevStep?.lineNumber}
                 errorLine={errorLine}
+                hint={step?.event === 'line' && step.condition && !run?.stale ? conditionHint(step.condition) : undefined}
                 onRun={visualize}
               />
             </div>

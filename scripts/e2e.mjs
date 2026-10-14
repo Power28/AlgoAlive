@@ -205,6 +205,23 @@ async function testDemo(page) {
   await page.keyboard.press('Escape');
 }
 
+async function testCondition(page) {
+  console.log('Condition');
+  // 預設頁籤 167：第一個條件是 while left < right → 0 < 6 → True
+  await page.click('[data-tab-example="lc167"]');
+  await sleep(300);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  for (let i = 0; i < 5 && !(await page.$('main [data-condition]')); i++) await page.click('[data-action="next"]');
+  const text = await page.evaluate(() => document.querySelector('main [data-condition]')?.innerText ?? '');
+  record('condition card shows substituted values', /left < right[\s\S]*0 < 6[\s\S]*True/.test(text) ? null : `got ${JSON.stringify(text)}`);
+  // Monaco 以不換行空白（ ）呈現空格，比對前先正規化
+  const hint = await page.$eval('.monaco-editor', (el) => el.querySelector('.aa-hint-true')?.textContent.replace(/\s+/g, ' ').trim() ?? null);
+  record('editor shows the inline result', hint?.includes('0 < 6 → True') ? null : `got ${JSON.stringify(hint)}`);
+  const outlined = await page.$$eval('main section:nth-child(2) [style*="dashed"]', (els) => els.length);
+  record('compared variables are outlined', outlined >= 2 ? null : `found ${outlined} outlined elements`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -233,6 +250,7 @@ try {
 
   await testTabs(page, server.url);
   await testLanguage(page);
+  await testCondition(page);
   await testDemo(page);
   await testExamples(page, expected);
 

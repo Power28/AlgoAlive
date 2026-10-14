@@ -205,6 +205,32 @@ def tracer_cases():
         if not deep or not deep[0].get("stackRefs") or len(deep[0].get("heap", {})) != 2:
             return "inner recursive frames should still see the whole tree (heap + stackRefs)"
 
+    def condition_values():
+        code = "def f(nums, target):\n    left, right = 0, len(nums) - 1\n    while left < right:\n        left += 1\n    return left\n"
+        r = run(code, "f([1, 2, 3], 9)")
+        cond = next((s["condition"] for s in r["steps"] if "condition" in s), None)
+        if not cond or cond["display"] != "0 < 2" or cond["result"] is not True:
+            return f"expected condition '0 < 2' → True, got {cond and (cond['display'], cond['result'])}"
+        locs = [t.get("loc") for t in cond["parts"][0]["terms"]]
+        if locs != [{"var": "left"}, {"var": "right"}]:
+            return f"operands should point at left / right, got {locs}"
+
+    def condition_short_circuit():
+        code = "def f(stack, t):\n    while stack and stack[-1] < t:\n        stack.pop()\n    return len(stack)\n"
+        r = run(code, "f([], 5)")
+        cond = next((s["condition"] for s in r["steps"] if "condition" in s), None)
+        parts = cond and cond["parts"]
+        if not parts or parts[0]["result"] is not False or not parts[1].get("skipped"):
+            return f"`stack` should be False and the comparison skipped, got {parts}"
+
+    def condition_side_effects_not_evaluated():
+        r = run("def f(stack):\n    if stack.pop() > 1:\n        return 1\n    return 0\n", "f([1, 2])")
+        cond = next((s["condition"] for s in r["steps"] if "condition" in s), None)
+        if fmt(r["returnValue"]) != "1":
+            return f"evaluating the condition changed the program: returned {fmt(r['returnValue'])}"
+        if not cond or cond["result"] is not None:
+            return "a condition with stack.pop() must not be evaluated ahead of time"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -213,6 +239,9 @@ def tracer_cases():
         ("print output is captured", stdout_capture),
         ("build_list does not trace user __init__", user_listnode_init_skipped),
         ("recursion keeps whole tree reachable", recursion_stack_refs),
+        ("condition values are substituted", condition_values),
+        ("and / or short-circuit is recorded", condition_short_circuit),
+        ("conditions with side effects are not evaluated", condition_side_effects_not_evaluated),
     ]
 
 

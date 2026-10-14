@@ -4,6 +4,7 @@ import { formatPy, typeLabel, valueKey } from '../lib/pyValue';
 import { useT } from '../i18n';
 import { Header } from './ArrayView';
 import { useHeap } from '../lib/heapContext';
+import { compareOutline } from './ConditionPanel';
 
 const enter = { initial: { opacity: 0, x: -10 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 10 } };
 
@@ -13,9 +14,11 @@ interface DictProps {
   prev?: PyValue;
   /** 目前 scalar 變數的值 → 變數名，用來標示「正在查表的 key」 */
   lookups: Map<string, string[]>;
+  /** 整個 dict 正在被比較（例如 x in seen） */
+  compared?: boolean;
 }
 
-export function DictView({ name, value, prev, lookups }: DictProps) {
+export function DictView({ name, value, prev, lookups, compared }: DictProps) {
   const heap = useHeap();
   const t = useT();
   const prevMap = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [valueKey(k), valueKey(v)]) : []);
@@ -30,7 +33,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
   return (
     <section>
       <Header name={name} kind={typeLabel(value)} meta={`size ${value.entries.length + (value.truncated ?? 0)}`} />
-      <div className="inline-block overflow-hidden rounded-lg border border-ink-600">
+      <div className="inline-block overflow-hidden rounded-lg border border-ink-600" style={compareOutline(!!compared)}>
         <div className="grid bg-ink-700 font-mono text-[11px] text-ink-400" style={cols}>
           <div className="px-3 py-1">{t('dictKey')}</div>
           <div className="border-l border-ink-600 px-3 py-1">{t('dictValue')}</div>
@@ -77,7 +80,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
   );
 }
 
-export function SetView({ name, value, prev }: { name: string; value: SequenceValue; prev?: PyValue }) {
+export function SetView({ name, value, prev, compared }: { name: string; value: SequenceValue; prev?: PyValue; compared?: boolean }) {
   const heap = useHeap();
   const prevKeys = new Set(prev?.type === 'set' ? prev.items.map(valueKey) : []);
   const hasPrev = prev?.type === 'set';
@@ -85,7 +88,7 @@ export function SetView({ name, value, prev }: { name: string; value: SequenceVa
   return (
     <section>
       <Header name={name} kind="set" meta={`size ${value.items.length + (value.truncated ?? 0)}`} />
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-dashed border-ink-600 p-2">
+      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-dashed border-ink-600 p-2" style={compareOutline(!!compared)}>
         {value.items.length === 0 && <span className="px-1 font-mono text-xs text-ink-400">set()</span>}
         <AnimatePresence initial={false}>
           {value.items.map((item) => {
@@ -119,9 +122,11 @@ interface ScalarProps {
   entries: [string, PyValue][];
   prevVars?: Record<string, PyValue>;
   pointerColors: Map<string, string>;
+  /** 目前條件式正在比較的變數 */
+  compared?: Set<string>;
 }
 
-export function ScalarGrid({ entries, prevVars, pointerColors }: ScalarProps) {
+export function ScalarGrid({ entries, prevVars, pointerColors, compared }: ScalarProps) {
   const heap = useHeap();
   const t = useT();
   if (entries.length === 0) return null;
@@ -134,7 +139,11 @@ export function ScalarGrid({ entries, prevVars, pointerColors }: ScalarProps) {
           const changed = prevVars !== undefined && valueKey(prevVars[name]) !== valueKey(v);
           const color = pointerColors.get(name);
           return (
-            <div key={name} className="flex items-stretch overflow-hidden rounded-md border border-ink-600 font-mono text-sm">
+            <div
+              key={name}
+              className="flex items-stretch overflow-hidden rounded-md border border-ink-600 font-mono text-sm"
+              style={compareOutline(!!compared?.has(name))}
+            >
               <div className="flex items-center gap-1.5 bg-ink-700 px-2 py-1 text-ink-300">
                 {color && <span className="size-2 rounded-full" style={{ backgroundColor: color }} />}
                 {name}
