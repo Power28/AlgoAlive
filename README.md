@@ -15,13 +15,35 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 ![AlgoAlive 執行 1. Two Sum：complement 命中 seen 字典的那一步](docs/screenshot.png)
 
 - **零侵入追蹤**：以 `sys.settrace` 攔截使用者函式的 `line` / `return` / `exception` 事件，自動快照 `frame.f_locals`
-- **List 方格 + 指針**：`left` / `right` / `i` / `j` / `slow` / `fast` / `lo` / `hi` / `mid`… 等索引變數自動畫成格子下方的彩色指針；`left`+`right` 等配對會畫出視窗範圍
+- **List / 字串方格 + 指針**：分析程式碼中的 `nums[i]`、`text1[i - 1]` 等索引寫法，把對應變數畫成格子下方的彩色指針（固定帶位移時標成 `i-1`）；`left`+`right`、`lo`+`hi` 等配對會畫出視窗範圍；被當成陣列走訪的字串也會拆成字元格子
+- **2D 格子**：`list[list]`（DP 表、網格 BFS、矩陣）畫成表格，並依 `grid[r][c]`、`dp[i][j]` 標出目前位置
 - **絲滑交換動畫**：前端追蹤每個格子的「身分」，swap / sort 時格子會真的移動（framer-motion `layout`）
 - **Dict 查表**：新增 key 綠色、值變動橘色；若某個區域變數的值正好是 dict 的 key（例如 `complement`），該列會被標示
 - **Set、純量變數、`print` 輸出、回傳值、例外** 皆有對應顯示
 - **播放控制**：上一步 / 下一步 / 播放暫停 / 時間軸拖曳 / 0.5×–4× 速度；鍵盤 `←` `→` `Space` `Home` `End`
 - **Monaco 編輯器**：橘色高亮「即將執行」的行，藍色淡化標示上一步的行；`Ctrl+Enter` 執行
+- **自訂頁籤**：新增空白頁籤或從教學範例開啟、雙擊重新命名、關閉；程式碼與測資自動存在瀏覽器（localStorage），重新整理也不會消失
+- **中英雙語**：右上角一鍵切換介面與教學內容語言（也可用 `?lang=zh` / `?lang=en`）
 - **防呆**：超過 500 步拋出 `TimeoutError`（仍可回放已記錄的步驟）；單次執行超過 10 秒會直接重啟 Worker
+
+## 演算法教學
+
+![演算法教學：滑動視窗](docs/tutorials.png)
+
+點右上角 **Learn / 演算法教學** 開啟。每個主題包含「什麼時候用、核心觀念、程式模板、複雜度、常見陷阱」，並附 1～3 題可直接執行的 LeetCode 範例；從範例開啟的頁籤可以把左側切到「教學」，邊讀邊跑。
+
+| 分類 | 主題（範例題號） |
+|---|---|
+| 陣列與指針 | 對撞雙指針（167、11）· 快慢指針（283、26）· 滑動視窗（209、3）· 二分搜尋（704、35）· 前綴和（1480、560）· 排序與分區（75、912） |
+| 雜湊 | 雜湊表查找（1、242） |
+| 堆疊、佇列與堆積 | 堆疊（20、150）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347） |
+| 圖與網格 | 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
+| 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
+| 其他技巧 | 貪心法（121、55）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191） |
+
+> 尚未支援：鏈結串列、二元樹、圖的節點圖示（需要追蹤物件參照並新增對應的視覺化元件）。
+
+教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
 
 ## 快速開始
 
@@ -43,7 +65,7 @@ npm run capture                                  # 錄線上網站
 npm run capture -- --url http://localhost:5173/  # 錄本機 dev server（先 npm run dev）
 ```
 
-會重新產生 `docs/screenshot.png`（1. Two Sum）與 `docs/move-zeroes.gif`（283. Move Zeroes）。需要本機安裝 Chrome 或 Edge（找不到時設定 `CHROME_PATH`），以及含 [Pillow](https://pypi.org/project/pillow/) 的 Python 3。腳本在 [scripts/](scripts/)。
+會重新產生 `docs/screenshot.png`（1. Two Sum）、`docs/tutorials.png`（教學頁）與 `docs/move-zeroes.gif`（283. Move Zeroes）。需要本機安裝 Chrome 或 Edge（找不到時設定 `CHROME_PATH`），以及含 [Pillow](https://pypi.org/project/pillow/) 的 Python 3。腳本在 [scripts/](scripts/)。
 
 ## 架構
 
@@ -54,12 +76,15 @@ src/
 │  ├─ pyodide.worker.ts    # Web Worker：載入 Pyodide (CDN v0.26.2) 並執行 tracer
 │  └─ runner.ts            # 主執行緒端：Worker 生命週期、逾時重啟、狀態通知
 ├─ lib/
-│  ├─ pyValue.ts           # Python repr 格式化、型別判斷
+│  ├─ pyValue.ts           # Python repr 格式化、型別判斷、2D 格子偵測
 │  ├─ cellKeys.ts          # 跨步驟追蹤 list 格子身分（讓 swap 變成移動動畫）
+│  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ components/             # CodeEditor / ArrayView / CollectionViews / Visualizer / Controls
-├─ hooks/usePlayback.ts    # 播放狀態
-└─ examples.ts             # 內建範例：167、283、1
+├─ tutorials/              # 雙語演算法教學與範例題（19 個主題、35 題）
+├─ components/             # CodeEditor / ArrayView / GridView / CollectionViews / Visualizer
+│                          # Controls / TabBar / Library / TutorialView
+├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）
+└─ i18n.tsx                # 中英雙語字串與語言切換
 ```
 
 ### 執行流程

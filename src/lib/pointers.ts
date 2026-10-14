@@ -1,11 +1,12 @@
 import type { PyValue } from '../types';
 import { intValue } from './pyValue';
+import { consistentOffset, type IndexMap } from './indexing';
 
 /** 常見的索引 / 指針變數名稱。 */
 const POINTER_NAMES = new Set([
-  'i', 'j', 'k', 'l', 'r', 'm', 'left', 'right', 'lo', 'hi', 'low', 'high', 'mid',
+  'i', 'j', 'l', 'r', 'left', 'right', 'lo', 'hi', 'low', 'high', 'mid',
   'slow', 'fast', 'start', 'end', 'begin', 'stop', 'p', 'q', 'p1', 'p2', 'ptr', 'idx', 'index',
-  'head', 'tail', 'cur', 'curr', 'pos', 'read', 'write', 'insert_pos', 'w',
+  'head', 'tail', 'cur', 'curr', 'pos', 'read', 'write', 'insert_pos',
 ]);
 const POINTER_PATTERN = /(^|_)(idx|index|ptr|pointer|pos|left|right|start|end|slow|fast|lo|hi)$/i;
 
@@ -33,20 +34,44 @@ export function pointerColor(name: string): string {
 
 export interface Pointer {
   name: string;
+  /** 顯示文字；變數一律帶位移使用時為 "i-1" 之類 */
+  label: string;
   index: number;
   color: string;
 }
 
 /**
- * 找出指向某個長度為 length 的序列的指針。
+ * 找出指向序列 seqName（長度 length）的指針。
+ * - 程式碼中寫了 `seqName[x]` 的變數 x 一定算
+ * - 名稱像指針、且在程式碼中「沒有」被拿去索引任何容器的變數（例如二分搜尋的 lo / hi），
+ *   也掛到可能相關的序列上；但只用常數索引的容器（`stack[-1]`、`heap[0]`）除外
  * index === length 也接受（常見的「已越界 / 結束」狀態），畫在最後一格右邊。
  */
-export function pointersFor(variables: Record<string, PyValue>, length: number): Pointer[] {
+export function pointersFor(
+  variables: Record<string, PyValue>,
+  seqName: string,
+  length: number,
+  indexMap: IndexMap,
+  exclude: Set<string> = new Set(),
+): Pointer[] {
+  const info = indexMap.get(seqName);
+  const used = info?.dims[0];
+  const constantOnly = !!info && (!used || used.size === 0);
+  const usedAnywhere = new Set<string>();
+  for (const i of indexMap.values()) for (const dim of i.dims) for (const v of dim?.keys() ?? []) usedAnywhere.add(v);
+
   const out: Pointer[] = [];
   for (const [name, v] of Object.entries(variables)) {
     const n = intValue(v);
-    if (n === null || !isPointerName(name)) continue;
-    if (n >= 0 && n <= length) out.push({ name, index: n, color: pointerColor(name) });
+    if (n === null || name === seqName) continue;
+    const direct = used?.has(name) ?? false;
+    // exclude：已經在 2D 格子上標示的座標變數，不再靠名稱猜測掛到 1D 序列
+    const loose = !constantOnly && !exclude.has(name) && isPointerName(name) && !usedAnywhere.has(name);
+    if (!direct && !loose) continue;
+    const offset = consistentOffset(used?.get(name));
+    const index = n + offset;
+    const label = offset ? `${name}${offset > 0 ? '+' : ''}${offset}` : name;
+    if (index >= 0 && index <= length) out.push({ name, label, index, color: pointerColor(name) });
   }
   return out;
 }

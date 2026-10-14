@@ -45,6 +45,30 @@ export function formatPy(v: PyValue): string {
   }
 }
 
+/** 格子內的精簡顯示：字串不加引號（改用顏色區分）、無限大顯示為 ∞。 */
+export function formatCell(v: PyValue): string {
+  if (v.type === 'str') return v.value;
+  if (v.type === 'float' && typeof v.value === 'string') {
+    if (v.value === 'inf') return '∞';
+    if (v.value === '-inf') return '-∞';
+  }
+  if (v.type === 'bool') return v.value ? 'T' : 'F';
+  return formatPy(v);
+}
+
+/** 字串拆成字元格子用的 items。 */
+export const charItems = (s: string): PyValue[] => [...s].map((ch) => ({ type: 'str', value: ch }));
+
+const GRID_MAX = 40;
+
+/** list 的每一列都是只含純量的 list → 以 2D 格子顯示（DP 表、grid BFS…）。 */
+export function isGrid(v: PyValue): boolean {
+  if (v.type !== 'list' || v.items.length === 0 || v.items.length > GRID_MAX) return false;
+  return v.items.every(
+    (row) => row.type === 'list' && row.items.length <= GRID_MAX && row.items.every(isScalar),
+  );
+}
+
 /** 給 UI 標籤用的簡短型別名稱。 */
 export function typeLabel(v: PyValue): string {
   if (v.type === 'dict' && v.cls) return v.cls;

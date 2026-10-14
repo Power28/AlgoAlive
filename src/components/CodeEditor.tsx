@@ -5,6 +5,8 @@ type MonacoEditor = Parameters<OnMount>[0];
 type Monaco = Parameters<OnMount>[1];
 
 interface Props {
+  /** 每個頁籤一個 Monaco model，切換頁籤時各自保留復原紀錄 */
+  path: string;
   value: string;
   onChange: (v: string) => void;
   /** 即將執行的行 */
@@ -30,7 +32,7 @@ const defineTheme: BeforeMount = (monaco) => {
   });
 };
 
-export function CodeEditor({ value, onChange, currentLine, prevLine, errorLine, onRun }: Props) {
+export function CodeEditor({ path, value, onChange, currentLine, prevLine, errorLine, onRun }: Props) {
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const decorations = useRef<ReturnType<MonacoEditor['createDecorationsCollection']> | null>(null);
@@ -62,10 +64,11 @@ export function CodeEditor({ value, onChange, currentLine, prevLine, errorLine, 
     if (focus) editor.revealLineInCenterIfOutsideViewport(focus);
   };
 
-  useEffect(applyDecorations, [currentLine, prevLine, errorLine]);
+  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine]);
 
   return (
     <Editor
+      path={path}
       language="python"
       theme="algoalive-dark"
       value={value}

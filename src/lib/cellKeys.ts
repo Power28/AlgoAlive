@@ -1,5 +1,5 @@
 import type { ExecutionStep } from '../types';
-import { isSequence, valueKey } from './pyValue';
+import { charItems, isSequence, valueKey } from './pyValue';
 
 /** stepIndex → 變數名 → 每個格子的穩定 key。 */
 export type CellKeyMap = Record<string, string[]>[];
@@ -21,8 +21,10 @@ export function computeCellKeys(steps: ExecutionStep[]): CellKeyMap {
   return steps.map((step) => {
     const map: Record<string, string[]> = {};
     for (const [name, v] of Object.entries(step.variables)) {
-      if (!isSequence(v)) continue;
-      const vals = v.items.map(valueKey);
+      // 字串也可能被畫成字元格子，一併給 key
+      const items = isSequence(v) ? v.items : v.type === 'str' && v.value.length >= 2 ? charItems(v.value) : null;
+      if (!items) continue;
+      const vals = items.map(valueKey);
       const id = `${step.depth}:${step.funcName}:${name}`;
       const prev = last.get(id);
       const keys = prev ? matchKeys(prev, vals, gen) : vals.map(gen);

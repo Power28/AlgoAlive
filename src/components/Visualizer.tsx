@@ -1,34 +1,87 @@
 import type { ReactNode } from 'react';
 import { CornerDownLeft, TriangleAlert } from 'lucide-react';
-import type { ExecutionStep, PyValue } from '../types';
-import { formatPy, isDict, isScalar, isSequence, isSet } from '../lib/pyValue';
-import { pointersFor } from '../lib/pointers';
+import type { ExecutionStep, PyValue, SequenceValue } from '../types';
+import { charItems, formatPy, intValue, isDict, isGrid, isSequence, isSet } from '../lib/pyValue';
+import { isPointerName, pointerColor, pointersFor } from '../lib/pointers';
+import type { IndexMap } from '../lib/indexing';
+import { useT } from '../i18n';
 import { ArrayView } from './ArrayView';
 import { DictView, ScalarGrid, SetView } from './CollectionViews';
+import { GridView, type GridMark } from './GridView';
 
 interface Props {
   step: ExecutionStep;
   prev?: ExecutionStep;
   cellKeys: Record<string, string[]>;
+  indexMap: IndexMap;
 }
 
-export function Visualizer({ step, prev, cellKeys }: Props) {
+const MAX_CHAR_CELLS = 60;
+const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
+
+export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
+  const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
   const prevVars = sameFrame ? prev.variables : undefined;
+  const vars = step.variables;
+  const entries = Object.entries(vars);
 
-  const entries = Object.entries(step.variables);
-  const sequences = entries.filter(([, v]) => isSequence(v));
-  const dicts = entries.filter(([, v]) => isDict(v));
-  const sets = entries.filter(([, v]) => isSet(v));
-  const scalars = entries.filter(([, v]) => isScalar(v));
+  // 2D 格子：依程式碼中的 grid[a][b] 組合標出目前位置
+  const grids = entries.filter(([, v]) => isGrid(v)) as [string, SequenceValue][];
+  const gridVars = new Set<string>();
+  const gridMarks = new Map<string, GridMark[]>();
+  for (const [name, v] of grids) {
+    const marks: GridMark[] = [];
+    for (const pair of indexMap.get(name)?.pairs ?? []) {
+      const [a, b] = pair.split(',');
+      const r = intValue(vars[a]);
+      const c = intValue(vars[b]);
+      const row = r !== null ? (v.items[r] as SequenceValue | undefined) : undefined;
+      if (r === null || c === null || !row || c < 0 || c >= row.items.length) continue;
+      marks.push({ label: `${a}, ${b}`, row: r, col: c, color: GRID_MARK_COLORS[marks.length % GRID_MARK_COLORS.length] });
+      gridVars.add(a).add(b);
+    }
+    gridMarks.set(name, marks);
+  }
+
+  // 1D 序列：list / tuple / deque，以及「被當成陣列使用」的字串
+  const sequences: { name: string; kind: string; items: PyValue[]; truncated?: number; prevItems?: PyValue[] }[] = [];
+  const shownAsCells = new Set<string>();
+  for (const [name, v] of entries) {
+    const p = prevVars?.[name];
+    if (isSequence(v) && !isGrid(v)) {
+      sequences.push({ name, kind: v.type, items: v.items, truncated: v.truncated, prevItems: p && isSequence(p) ? p.items : undefined });
+      shownAsCells.add(name);
+    } else if (v.type === 'str' && v.value.length >= 2 && v.value.length <= MAX_CHAR_CELLS) {
+      // 程式碼有 s[...]，或有指針型變數落在範圍內（例如 enumerate 走訪的滑動視窗）
+      const indexed = indexMap.has(name);
+      const hasPointer = entries.some(([n, x]) => {
+        const i = intValue(x);
+        return i !== null && isPointerName(n) && i >= 0 && i <= v.value.length;
+      });
+      if (indexed || hasPointer) {
+        const prevItems = p?.type === 'str' ? charItems(p.value) : undefined;
+        sequences.push({ name, kind: 'str', items: charItems(v.value), prevItems });
+        shownAsCells.add(name);
+      }
+    }
+  }
 
   const pointerColors = new Map<string, string>();
-  const pointersByList = sequences.map(([name, v]) => {
-    const ps = pointersFor(step.variables, isSequence(v) ? v.items.length : 0).filter((p) => p.name !== name);
+  const pointersByList = sequences.map((s) => {
+    const ps = pointersFor(vars, s.name, s.items.length, indexMap, gridVars);
     ps.forEach((p) => pointerColors.set(p.name, p.color));
     return ps;
   });
+  for (const name of gridVars) if (!pointerColors.has(name)) pointerColors.set(name, pointerColor(name));
+
+  const gridNames = new Set(grids.map(([n]) => n));
+  const dicts = entries.filter(([, v]) => isDict(v));
+  const sets = entries.filter(([, v]) => isSet(v));
+  const scalars = entries.filter(
+    ([n, v]) => !gridNames.has(n) && !shownAsCells.has(n) && !isSequence(v) && !isDict(v) && !isSet(v),
+  );
 
   // scalar 值 → 持有該值的變數名（用來標示 dict 中被查詢的 key）
   const lookups = new Map<string, string[]>();
@@ -42,7 +95,7 @@ export function Visualizer({ step, prev, cellKeys }: Props) {
     <div className="flex flex-col gap-6">
       {step.event === 'return' && step.returnValue && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
-          <span className="text-ink-300">{step.funcName}() returned</span>
+          <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
           <code className="font-semibold">{formatPy(step.returnValue)}</code>
         </Banner>
       )}
@@ -52,27 +105,30 @@ export function Visualizer({ step, prev, cellKeys }: Props) {
         </Banner>
       )}
 
-      {sequences.map(([name, v], i) => (
+      {sequences.map((s, i) => (
         <ArrayView
-          key={name}
-          name={name}
-          value={v as Extract<PyValue, { items: PyValue[] }>}
-          keys={cellKeys[name] ?? []}
-          prev={prevVars?.[name]}
+          key={s.name}
+          name={s.name}
+          kind={s.kind}
+          items={s.items}
+          truncated={s.truncated}
+          keys={cellKeys[s.name] ?? []}
+          prevItems={s.prevItems}
           pointers={pointersByList[i]}
         />
+      ))}
+      {grids.map(([name, v]) => (
+        <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} />
       ))}
       {dicts.map(([name, v]) => (
         <DictView key={name} name={name} value={v as Extract<PyValue, { type: 'dict' }>} prev={prevVars?.[name]} lookups={lookups} />
       ))}
       {sets.map(([name, v]) => (
-        <SetView key={name} name={name} value={v as Extract<PyValue, { items: PyValue[] }>} prev={prevVars?.[name]} />
+        <SetView key={name} name={name} value={v as SequenceValue} prev={prevVars?.[name]} />
       ))}
       <ScalarGrid entries={scalars} prevVars={prevVars} pointerColors={pointerColors} />
 
-      {entries.length === 0 && step.event === 'line' && (
-        <p className="text-sm text-ink-400">No local variables yet.</p>
-      )}
+      {entries.length === 0 && step.event === 'line' && <p className="text-sm text-ink-400">{t('noLocals')}</p>}
     </div>
   );
 }

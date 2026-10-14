@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DictValue, PyValue, SequenceValue } from '../types';
 import { formatPy, typeLabel, valueKey } from '../lib/pyValue';
+import { useT } from '../i18n';
 import { Header } from './ArrayView';
 
 const enter = { initial: { opacity: 0, x: -10 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 10 } };
@@ -14,6 +15,7 @@ interface DictProps {
 }
 
 export function DictView({ name, value, prev, lookups }: DictProps) {
+  const t = useT();
   const prevMap = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [valueKey(k), valueKey(v)]) : []);
   const hasPrev = prev?.type === 'dict';
   const order = value.entries.map(([k]) => valueKey(k)).join('|');
@@ -28,10 +30,10 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
       <Header name={name} kind={typeLabel(value)} meta={`size ${value.entries.length + (value.truncated ?? 0)}`} />
       <div className="inline-block overflow-hidden rounded-lg border border-ink-600">
         <div className="grid bg-ink-700 font-mono text-[11px] text-ink-400" style={cols}>
-          <div className="px-3 py-1">key</div>
-          <div className="border-l border-ink-600 px-3 py-1">value</div>
+          <div className="px-3 py-1">{t('dictKey')}</div>
+          <div className="border-l border-ink-600 px-3 py-1">{t('dictValue')}</div>
         </div>
-        {value.entries.length === 0 && <div className="px-3 py-2 font-mono text-xs text-ink-400">empty {'{}'}</div>}
+        {value.entries.length === 0 && <div className="px-3 py-2 font-mono text-xs text-ink-400">{t('dictEmpty')} {'{}'}</div>}
         <AnimatePresence initial={false}>
           {value.entries.map(([k, v]) => {
             const kk = valueKey(k);
@@ -48,14 +50,14 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
                 className="grid border-t border-ink-600 font-mono text-sm"
                 style={{
                   ...cols,
-                  backgroundColor: isNew ? 'rgba(44,187,93,0.18)' : isChanged ? 'rgba(255,161,22,0.2)' : undefined,
-                  boxShadow: lookedUpBy ? 'inset 3px 0 0 #0a84ff' : undefined,
+                  backgroundColor: isNew ? 'rgba(44,187,93,0.18)' : isChanged ? 'rgba(255,161,22,0.2)' : 'transparent',
+                  boxShadow: lookedUpBy ? 'inset 3px 0 0 #0a84ff' : 'none',
                 }}
               >
                 <div className="flex items-center gap-2 truncate px-3 py-1.5">
                   {formatPy(k)}
                   {lookedUpBy && (
-                    <span className="rounded bg-info/20 px-1 text-[10px] text-info" title="A local variable currently holds this key">
+                    <span className="rounded bg-info/20 px-1 text-[10px] text-info" title={t('lookupHint')}>
                       = {lookedUpBy.join(', ')}
                     </span>
                   )}
@@ -67,7 +69,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
             );
           })}
         </AnimatePresence>
-        {value.truncated ? <div className="border-t border-ink-600 px-3 py-1 text-xs text-ink-400">…+{value.truncated} more</div> : null}
+        {value.truncated ? <div className="border-t border-ink-600 px-3 py-1 text-xs text-ink-400">…+{value.truncated} {t('more')}</div> : null}
       </div>
     </section>
   );
@@ -117,10 +119,11 @@ interface ScalarProps {
 }
 
 export function ScalarGrid({ entries, prevVars, pointerColors }: ScalarProps) {
+  const t = useT();
   if (entries.length === 0) return null;
   return (
     <section>
-      <div className="mb-2 font-mono text-[11px] tracking-wide text-ink-400 uppercase">Variables</div>
+      <div className="mb-2 font-mono text-[11px] tracking-wide text-ink-400 uppercase">{t('variables')}</div>
       <div className="flex flex-wrap gap-2">
         {entries.map(([name, v]) => {
           const text = formatPy(v);

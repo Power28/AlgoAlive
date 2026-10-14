@@ -1,27 +1,34 @@
 import { motion } from 'framer-motion';
-import type { PyValue, SequenceValue } from '../types';
-import { formatPy, valueKey } from '../lib/pyValue';
+import type { PyValue } from '../types';
+import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
 
-const CELL = 48;
+const MIN_CELL = 48;
+const MAX_CELL = 120;
 const GAP = 8;
-const STEP = CELL + GAP;
 const POINTER_ROW = 22;
+/** 字串內容的顏色（同 Monaco 的字串色），取代引號來區分 '1' 與 1 */
+export const STR_COLOR = '#ce9178';
 
 const spring = { type: 'spring', stiffness: 420, damping: 34 } as const;
 
 interface Props {
   name: string;
-  value: SequenceValue;
+  /** 型別標籤：list / tuple / deque / str */
+  kind: string;
+  items: PyValue[];
+  truncated?: number;
   keys: string[];
-  prev?: PyValue;
+  prevItems?: PyValue[];
   pointers: Pointer[];
 }
 
-export function ArrayView({ name, value, keys, prev, pointers }: Props) {
-  const items = value.items;
+export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers }: Props) {
   const n = items.length;
-  const prevItems = prev && 'items' in prev ? prev.items : undefined;
+  // 格子寬度依最長內容調整（例如 BFS 佇列中的座標 tuple），整列統一寬度才能對齊指針
+  const longest = Math.max(0, ...items.map((it) => formatCell(it).length));
+  const CELL = Math.min(MAX_CELL, Math.max(MIN_CELL, longest * 8.5 + 14));
+  const STEP = CELL + GAP;
 
   // 同一格上的多個指針往下堆疊
   const rowOf = new Map<string, number>();
@@ -38,9 +45,10 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
   const windows = WINDOW_PAIRS.flatMap(([a, b]) => {
     const pa = byName.get(a);
     const pb = byName.get(b);
-    if (!pa || !pb || n === 0) return [];
-    const from = Math.min(pa.index, pb.index);
-    const to = Math.min(Math.max(pa.index, pb.index), n - 1);
+    // 左指針跑到右指針右邊代表視窗為空（例如滑動視窗剛收縮完），不畫
+    if (!pa || !pb || n === 0 || pa.index > pb.index) return [];
+    const from = pa.index;
+    const to = Math.min(pb.index, n - 1);
     return from <= to ? [{ id: `${a}-${b}`, from, to }] : [];
   });
 
@@ -54,7 +62,7 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
 
   return (
     <section>
-      <Header name={name} kind={value.type} meta={`len ${n + (value.truncated ?? 0)}`} />
+      <Header name={name} kind={kind} meta={`len ${n + (truncated ?? 0)}`} />
       <div className="scrollbar-thin overflow-x-auto pb-1">
         <div className="relative px-1 pt-1" style={{ width: Math.max(width, STEP) + 8 }}>
           {/* 滑動視窗 / 雙指針夾住的範圍 */}
@@ -73,21 +81,23 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
             {items.map((item, i) => {
               const changed = prevItems !== undefined && valueKey(prevItems[i]) !== valueKey(item);
               const accent = colorAt.get(i);
-              const text = formatPy(item);
+              const text = formatCell(item);
               return (
                 <motion.div
                   key={keys[i] ?? i}
                   layout
                   layoutDependency={order}
                   transition={spring}
-                  title={text}
+                  title={formatPy(item)}
                   className="flex shrink-0 items-center justify-center rounded-md border font-mono font-semibold"
                   style={{
                     width: CELL,
                     height: CELL,
-                    fontSize: text.length > 4 ? 11 : 15,
+                    fontSize: CELL > MIN_CELL ? 13 : text.length > 4 ? 11 : 15,
                     borderColor: accent ?? '#3e3e3e',
-                    boxShadow: accent ? `0 0 0 1px ${accent}55, 0 0 14px ${accent}33` : undefined,
+                    color: item.type === 'str' ? STR_COLOR : 'inherit',
+                    // motion 元件不會清掉變成 undefined 的 style，必須明確給 'none'
+                    boxShadow: accent ? `0 0 0 1px ${accent}55, 0 0 14px ${accent}33` : 'none',
                   }}
                   animate={{ backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a' }}
                 >
@@ -103,7 +113,7 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
                 end
               </div>
             )}
-            {value.truncated ? <div className="self-center pl-1 text-xs text-ink-400">…+{value.truncated}</div> : null}
+            {truncated ? <div className="self-center pl-1 text-xs text-ink-400">…+{truncated}</div> : null}
           </div>
 
           {/* 索引 */}
@@ -133,7 +143,7 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
                   className="mt-0.5 rounded px-1.5 font-mono text-[11px] leading-4 font-semibold text-ink-900"
                   style={{ backgroundColor: p.color }}
                 >
-                  {p.name}
+                  {p.label}
                 </span>
               </motion.div>
             ))}

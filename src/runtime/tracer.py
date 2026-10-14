@@ -99,7 +99,8 @@ def _ser(v, depth=0, seen=None):
 def _snapshot(frame):
     out = {}
     for name, value in frame.f_locals.items():
-        if name.startswith("__") or name == "self":
+        # ".0" 之類是 comprehension / generator 的內部迭代器變數
+        if name.startswith("__") or name.startswith(".") or name == "self":
             continue
         if isinstance(value, _SKIP_TYPES):
             continue
