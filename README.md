@@ -4,6 +4,8 @@
 
 **🔗 線上 Demo：https://power28.github.io/AlgoAlive/**
 
+[![AlgoAlive 執行 1. Two Sum：complement 命中 seen 字典的那一步](docs/screenshot.png)](https://power28.github.io/AlgoAlive/)
+
 AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器。貼上一般的 Python 函式與測試呼叫，按下 **Visualize**，就能一步步看到 list 方格、指針移動、dict 查表與變數變化——不用手動加任何 `print`。
 
 全部在瀏覽器內執行（Pyodide / WebAssembly），純靜態網頁即可部署，不需後端。
