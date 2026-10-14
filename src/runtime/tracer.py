@@ -248,6 +248,8 @@ _MAX_STAGES = 6
 # 這些函式出現在賦值右邊時也算「計算」（例如 n = len(nums)、best = max(best, area)）
 _CALC_CALLS = {"len", "abs", "min", "max", "sum", "round", "int", "float"}
 _LEAF_NODES = (ast.Name, ast.Subscript, ast.Attribute)
+_BIT_OPS = {ast.BitAnd: "&", ast.BitOr: "|", ast.BitXor: "^", ast.LShift: "<<", ast.RShift: ">>"}
+_MAX_BITS_VALUE = 2 ** 32
 
 
 class _Unknown(Exception):
@@ -281,7 +283,8 @@ class _CondAnalyzer:
                 continue
             expr = self._condition_of(node)
             if expr is not None:
-                self.by_line[node.lineno] = expr
+                is_test = isinstance(node, (ast.If, ast.While, ast.Assert)) or isinstance(getattr(node, "value", None), ast.IfExp)
+                self.by_line[node.lineno] = (expr, "test" if is_test else "value")
                 continue
             calc = self._calc_of(node)
             if calc is not None:
@@ -384,28 +387,49 @@ class _CondAnalyzer:
         term["display"] = self._short(src, value)
         return term, value, True
 
-    def _walk(self, node, frame, ctx, parts, skip):
-        """回傳 (顯示字串, 結果)；結果 None 代表無法得知或被短路跳過"""
+    def _walk(self, node, frame, ctx, parts, skip, order):
+        """
+        回傳 (顯示字串, 真假, 實際值, 樹節點)。
+        真假為 None 代表無法得知或被短路跳過；order 依求值順序替比較與取值編號，前端照順序播放。
+        and / or 的實際值是 Python 真正回傳的那個運算元（例如 list1 or list2 回傳的是節點）。
+        """
+        src = self._src(node)
         if isinstance(node, ast.BoolOp):
-            is_and = isinstance(node.op, ast.And)
-            shown, result = [], None
-            for value in node.values:
-                text, r = self._walk(value, frame, ctx, parts, skip)
+            op = "and" if isinstance(node.op, ast.And) else "or"
+            entered_skipped = skip
+            shown, children = [], []
+            truthy, value, short_at = None, None, None
+            for i, sub in enumerate(node.values):
+                text, t, v, child = self._walk(sub, frame, ctx, parts, skip, order)
                 shown.append(text)
+                children.append(child)
                 if skip:
                     continue
-                result = r
-                if r is None or (is_and and not r) or (not is_and and r):
+                truthy, value = t, v
+                stop = t is None or (op == "and" and not t) or (op == "or" and t)
+                if stop:
                     skip = True  # 短路：後面的不會被求值
-            return (" and " if is_and else " or ").join(shown), (None if result is None else bool(result))
+                    if t is not None and i < len(node.values) - 1:
+                        short_at = i
+            tree = {"op": op, "src": src, "children": children, "truthy": truthy, "skipped": entered_skipped}
+            if truthy is not None:
+                tree["value"] = _ser(value, ctx)
+            if short_at is not None:
+                tree["shortCircuitAt"] = short_at
+            return f" {op} ".join(shown), truthy, value, tree
+
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-            text, r = self._walk(node.operand, frame, ctx, parts, skip)
-            return f"not {text}", (None if r is None else not r)
+            text, t, _, child = self._walk(node.operand, frame, ctx, parts, skip, order)
+            truthy = None if t is None else not t
+            tree = {"op": "not", "src": src, "children": [child], "truthy": truthy, "skipped": skip}
+            if truthy is not None:
+                tree["value"] = _ser(truthy, ctx)
+            return f"not {text}", truthy, truthy, tree
+
         if isinstance(node, ast.Compare):
-            src = self._src(node)
             if skip:
                 parts.append({"kind": "cmp", "src": src, "skipped": True})
-                return "…", None
+                return "…", None, None, {"op": "cmp", "src": src, "skipped": True}
             terms, values, ok = [], [], True
             for operand in [node.left, *node.comparators]:
                 term, value, known = self._term(operand, frame, ctx)
@@ -421,16 +445,24 @@ class _CondAnalyzer:
                     result = None
             text = terms[0]["display"] + "".join(f" {sym} {t['display']}" for (sym, _), t in zip(ops, terms[1:]))
             parts.append({"kind": "cmp", "src": src, "terms": terms, "ops": [sym for sym, _ in ops], "display": text, "result": result})
-            return text, result
+            tree = {"op": "cmp", "src": src, "display": text, "truthy": result, "skipped": False, "order": len(order)}
+            order.append(src)
+            if result is not None:
+                tree["value"] = _ser(result, ctx)
+            return text, result, result, tree
+
         # 其他運算式（例如 while queue: 的 queue）：看它的真假值
-        src = self._src(node)
         if skip:
             parts.append({"kind": "truth", "src": src, "skipped": True})
-            return "…", None
+            return "…", None, None, {"op": "leaf", "src": src, "skipped": True}
         term, value, known = self._term(node, frame, ctx)
-        result = bool(value) if known else None
-        parts.append({"kind": "truth", "src": src, "terms": [term], "display": term["display"], "result": result})
-        return term["display"], result
+        truthy = bool(value) if known else None
+        parts.append({"kind": "truth", "src": src, "terms": [term], "display": term["display"], "result": truthy})
+        tree = {"op": "leaf", "src": src, "display": term["display"], "truthy": truthy, "skipped": False, "order": len(order)}
+        order.append(src)
+        if known:
+            tree["value"] = term["value"]
+        return term["display"], truthy, value, tree
 
     @staticmethod
     def _subst(node, repl):
@@ -510,11 +542,17 @@ class _CondAnalyzer:
                 composites.append(n)
 
         post_order(expr)
+        bits = []
         try:
             for node in composites:
                 value = self._eval(node, frame)
                 repl[id(node)] = self._result_short(value)
                 stages.append(self._render(self._subst(expr, repl)))
+                if isinstance(node, ast.BinOp) and type(node.op) in _BIT_OPS:
+                    left, right = self._eval(node.left, frame), self._eval(node.right, frame)
+                    ints = [x for x in (left, right, value) if isinstance(x, int) and not isinstance(x, bool)]
+                    if len(ints) == 3 and all(0 <= x < _MAX_BITS_VALUE for x in ints):
+                        bits.append({"op": _BIT_OPS[type(node.op)], "left": left, "right": right, "result": value})
             result = self._eval(expr, frame)
         except _Unknown:
             return None
@@ -535,6 +573,8 @@ class _CondAnalyzer:
             "resultDisplay": result_display,
             "terms": terms,
         }
+        if bits:
+            calc["bits"] = bits
         if target is not None:
             calc["target"] = self._src(target)
             loc = self._locate(target, frame)
@@ -549,15 +589,19 @@ class _CondAnalyzer:
             return None
 
     def evaluate(self, frame, ctx):
-        expr = self.by_line.get(frame.f_lineno)
-        if expr is None:
+        spec = self.by_line.get(frame.f_lineno)
+        if spec is None:
             return None
+        expr, context = spec
         parts = []
         try:
-            display, result = self._walk(expr, frame, ctx, parts, False)
+            display, truthy, value, tree = self._walk(expr, frame, ctx, parts, False, [])
         except Exception:
             return None
-        return {"src": self._src(expr), "display": display, "result": result, "parts": parts}
+        cond = {"src": self._src(expr), "display": display, "result": truthy, "parts": parts, "tree": tree, "context": context}
+        if truthy is not None:
+            cond["value"] = _ser(value, ctx)
+        return cond
 
 
 def _visible_locals(frame):

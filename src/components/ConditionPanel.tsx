@@ -3,6 +3,7 @@ import { Check, CircleHelp, X } from 'lucide-react';
 import type { Condition, ConditionPart, ExecutionStep, Heap } from '../types';
 import { formatPy } from '../lib/pyValue';
 import { useT } from '../i18n';
+import { LogicView, hasLogic } from './LogicTree';
 
 const MAX_VALUE = 28;
 
@@ -72,11 +73,15 @@ function Part({ part, heap, delay }: { part: ConditionPart; heap?: Heap; delay: 
 /** 視覺化面板上方的「條件判斷」卡片：代入數值後的比較，以及 and / or 的短路過程 */
 export function ConditionPanel({ condition, heap, line }: { condition: Condition; heap?: Heap; line: number }) {
   const t = useT();
-  const compound = condition.parts.length > 1;
+  const logic = hasLogic(condition.tree);
+  const compound = !logic && condition.parts.length > 1;
+  // 賦值 / 回傳中的 and / or：結果是被選中的運算元本身，不只是 True / False
+  const valueContext = condition.context === 'value';
+  const valueText = valueContext && condition.value && condition.value.type !== 'bool' ? formatPy(condition.value, heap) : null;
   return (
     <div className="rounded-lg border border-[#c084fc]/40 bg-[#c084fc]/8 px-3 py-2.5" data-condition>
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[#c084fc] uppercase">
-        {t('condTitle')}
+        {t(logic && valueContext ? 'logicTitle' : 'condTitle')}
         <span className="font-mono font-normal normal-case text-ink-400">{t('line', { n: line })}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -94,10 +99,22 @@ export function ConditionPanel({ condition, heap, line }: { condition: Condition
             </motion.code>
           </>
         )}
+        {valueText && (
+          <>
+            <span className="text-ink-600">=</span>
+            <code className="font-mono text-sm font-semibold text-ink-100">{valueText.length > 40 ? `${valueText.slice(0, 40)}…` : valueText}</code>
+          </>
+        )}
         <motion.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.25, type: 'spring', stiffness: 500, damping: 22 }}>
           <ResultBadge result={condition.result} />
         </motion.span>
       </div>
+      {valueText && <p className="mt-1 text-[11px] text-ink-400">{t('andOrReturnsOperand')}</p>}
+      {logic && condition.tree && (
+        <div className="mt-2 border-t border-[#c084fc]/20 pt-2">
+          <LogicView node={condition.tree} heap={heap} valueContext={valueContext} />
+        </div>
+      )}
       {compound && (
         <div className="mt-2 flex flex-col gap-1 border-t border-[#c084fc]/20 pt-2">
           {condition.parts.map((part, i) => (
@@ -114,9 +131,13 @@ export type HintTone = 'true' | 'false' | 'unknown' | 'calc';
 
 export function lineHint(step: ExecutionStep | undefined): { text: string; tone: HintTone } | undefined {
   if (!step || step.event !== 'line') return undefined;
-  const clip = (s: string) => (s.length > 60 ? `${s.slice(0, 60)}…` : s);
+  const clip = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n)}…` : s);
   if (step.condition) {
     const c = step.condition;
+    // 賦值 / 回傳中的 and / or：提示實際被選中的值
+    if (c.context === 'value' && c.value && c.value.type !== 'bool') {
+      return { text: `${clip(c.display)} → ${clip(formatPy(c.value, step.heap), 30)}`, tone: 'calc' };
+    }
     const tone: HintTone = c.result === true ? 'true' : c.result === false ? 'false' : 'unknown';
     return { text: `${clip(c.display)}${c.result === null ? '' : ` → ${c.result ? 'True' : 'False'}`}`, tone };
   }

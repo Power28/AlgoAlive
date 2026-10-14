@@ -59,6 +59,8 @@ export interface Calc {
   /** 寫入的目標，例如 "mid"、"dp[i]" */
   target?: string;
   targetLoc?: TermLocation;
+  /** 位元運算的二進位運算元（例如 result ^= num） */
+  bits?: { op: string; left: number; right: number; result: number }[];
 }
 
 /** 比較運算元在畫面上的位置，用來替被比較的格子 / 變數 / 節點加框 */
@@ -94,8 +96,30 @@ export interface Condition {
   src: string;
   /** 代入數值後的整個條件式，例如 "0 < 6"、"stack and …" */
   display: string;
+  /** 真假值 */
   result: boolean | null;
   parts: ConditionPart[];
+  /** 邏輯樹：and / or / not 的結構與求值順序 */
+  tree?: LogicNode;
+  /** test：if / while 只看真假；value：賦值 / 回傳，and / or 回傳的是運算元本身 */
+  context?: 'test' | 'value';
+  /** 整個運算式實際的值（例如 list1 or list2 回傳的那個節點） */
+  value?: PyValue;
+}
+
+export interface LogicNode {
+  op: 'and' | 'or' | 'not' | 'cmp' | 'leaf';
+  src: string;
+  display?: string;
+  truthy?: boolean | null;
+  value?: PyValue;
+  /** 被 and / or 短路跳過 */
+  skipped?: boolean;
+  /** 比較與取值的求值順序（0 起算），動畫照這個順序播放 */
+  order?: number;
+  children?: LogicNode[];
+  /** and / or 在第幾個運算元就決定了結果 */
+  shortCircuitAt?: number;
 }
 
 export interface TraceError {

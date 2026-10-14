@@ -261,6 +261,30 @@ def tracer_cases():
         if fmt(r["returnValue"]) != "7":
             return f"program result changed: {fmt(r['returnValue'])}"
 
+    def first_cond(code, call, line):
+        r = run(code, call)
+        return next((s["condition"] for s in r["steps"] if s.get("condition") and s["lineNumber"] == line), None)
+
+    def logic_or_returns_operand():
+        cond = first_cond("def f(a, b):\n    x = a or b\n    return x\n", "f(None, build_list([3]))", 2)
+        if not cond or cond.get("context") != "value" or (cond.get("value") or {}).get("type") != "ref":
+            return f"`None or node` should evaluate to the node itself, got {cond and (cond.get('context'), cond.get('value'))}"
+
+    def logic_tree_short_circuit():
+        code = "def f(a, b, c):\n    if (a > 0 and b > 0) or not c:\n        return 1\n    return 0\n"
+        cond = first_cond(code, "f(-1, 5, [])", 2)
+        tree = (cond or {}).get("tree") or {}
+        and_node = (tree.get("children") or [{}])[0]
+        b_cmp = (and_node.get("children") or [{}, {}])[1]
+        if tree.get("op") != "or" or tree.get("truthy") is not True or and_node.get("shortCircuitAt") != 0 or not b_cmp.get("skipped"):
+            return f"expected or(and(a>0 ✗, b>0 skipped), not c ✓) → True, got {tree}"
+
+    def bits_recorded():
+        code = "def f(n):\n    n &= n - 1\n    return n\n"
+        _, calc = first_calc(code, "f(11)", 2)
+        if not calc or calc.get("bits") != [{"op": "&", "left": 11, "right": 10, "result": 10}]:
+            return f"expected 11 & 10 = 10 in bits, got {calc and calc.get('bits')}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -276,6 +300,9 @@ def tracer_cases():
         ("augmented assignment is shown as a calculation", calc_augmented),
         ("calculation reads / writes list cells", calc_cell_read_write),
         ("calculations calling user functions are skipped", calc_skips_user_calls),
+        ("and / or return the operand itself", logic_or_returns_operand),
+        ("logic tree records short-circuit", logic_tree_short_circuit),
+        ("bitwise operands are recorded in binary", bits_recorded),
     ]
 
 

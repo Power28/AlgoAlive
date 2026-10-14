@@ -242,6 +242,35 @@ async function testCalc(page) {
   record('cells read by the calculation are outlined', reads >= 2 ? null : `found ${reads} outlined cells`);
 }
 
+/** 從教學庫開啟範例並執行，往前走到 selector 的內容包含 needle 為止 */
+async function openAndStepTo(page, topic, example, selector, needle) {
+  await page.click('[data-action="library"]');
+  await page.waitForSelector(`[data-topic="${topic}"]`);
+  await page.click(`[data-topic="${topic}"]`);
+  await page.waitForSelector(`[data-example="${example}"]`);
+  await page.click(`[data-example="${example}"]`);
+  await sleep(250);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  const text = () => page.evaluate((s) => document.querySelector(`main ${s}`)?.innerText ?? '', selector);
+  // 標題有 CSS uppercase，innerText 會變成大寫，比對時不分大小寫
+  const hit = async () => (await text()).toLowerCase().includes(needle.toLowerCase());
+  for (let i = 0; i < 80 && !(await hit()); i++) await page.click('[data-action="next"]');
+  const result = await text();
+  await page.click('[role="tab"][aria-selected="true"] button');
+  return result;
+}
+
+async function testLogic(page) {
+  console.log('Logic');
+  // 739：while stack and temperatures[stack[-1]] < t，stack 為空時短路
+  const logic = await openAndStepTo(page, 'monotonic-stack', 'lc739', '[data-condition]', 'skipped');
+  record('logic tree shows the short-circuit', /stack[\s\S]*empty container is False[\s\S]*and stops at the first False[\s\S]*skipped/.test(logic) ? null : `got ${JSON.stringify(logic)}`);
+  // 191：n &= n - 1 → 1011 & 1010 = 1010
+  const bits = await openAndStepTo(page, 'bit-manipulation', 'lc191', '[data-calc]', 'Bitwise');
+  record('bitwise calculation shows binary rows', /11 & 10[\s\S]*bitwise[\s\S]*\(11\)[\s\S]*\(10\)/i.test(bits) ? null : `got ${JSON.stringify(bits)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -272,6 +301,7 @@ try {
   await testLanguage(page);
   await testCondition(page);
   await testCalc(page);
+  await testLogic(page);
   await testDemo(page);
   await testExamples(page, expected);
 

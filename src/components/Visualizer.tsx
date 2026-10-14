@@ -134,8 +134,9 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
   return (
     <HeapContext.Provider value={heap}>
     <div className="flex flex-col gap-6">
-      {step.event === 'line' && step.condition && <ConditionPanel condition={step.condition} heap={heap} line={step.lineNumber} />}
-      {step.event === 'line' && step.calc && <CalcPanel calc={step.calc} line={step.lineNumber} />}
+      {/* 以步驟編號當 key：連續兩步都有卡片時也會重新播放動畫 */}
+      {step.event === 'line' && step.condition && <ConditionPanel key={`cond-${step.stepIndex}`} condition={step.condition} heap={heap} line={step.lineNumber} />}
+      {step.event === 'line' && step.calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={step.calc} line={step.lineNumber} />}
       {step.event === 'return' && step.returnValue && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
