@@ -198,6 +198,13 @@ async function testDemo(page) {
   const later = await progress();
   const step = (s) => Number(s.split('/')[0]);
   record('demo runs the example and auto-plays', step(later) > step(first) ? null : `progress stuck at ${first} → ${later}`);
+  // 播放時高度不能變動，否則下方的教學內容會跟著跳
+  const heights = new Set();
+  for (let i = 0; i < 20; i++) {
+    heights.add(Math.round(await page.$eval('[data-demo]', (el) => el.getBoundingClientRect().height)));
+    await sleep(150);
+  }
+  record('demo keeps a fixed height while playing', heights.size === 1 ? null : `heights changed: ${[...heights].join(', ')}`);
   const hasTree = await page.$eval('[data-demo]', (el) => el.innerText.includes('TreeNode'));
   record('demo shows the tree view', hasTree ? null : 'no TreeNode view inside the demo');
   const busy = await page.$eval('[data-action="visualize"]', (b) => b.disabled);

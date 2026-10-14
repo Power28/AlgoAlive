@@ -112,9 +112,10 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
         </button>
       </div>
 
-      <div className="grid @2xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      {/* 固定高度：每一步的卡片、變數數量不同，若跟著內容伸縮，下方的教學內容會一直跳動 */}
+      <div className="grid @2xl:h-96 @2xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {/* 程式碼：目前行橘色、上一步的行藍色 */}
-        <pre className="scrollbar-thin max-h-80 overflow-auto border-b border-ink-700 py-2 font-mono text-[12px] leading-[1.6] @2xl:border-r @2xl:border-b-0">
+        <pre className="scrollbar-thin max-h-60 overflow-auto border-b border-ink-700 py-2 font-mono text-[12px] leading-[1.6] @2xl:max-h-none @2xl:border-r @2xl:border-b-0">
           {lines.map((line, i) => {
             const n = i + 1;
             const current = step?.lineNumber === n;
@@ -145,7 +146,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
         </pre>
 
         {/* 視覺化 */}
-        <div className="scrollbar-thin max-h-80 min-h-40 overflow-auto p-3">
+        <div className="scrollbar-thin h-96 overflow-auto p-3 [overflow-anchor:none] @2xl:h-auto">
           {step ? (
             <div className="origin-top-left">
               <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap} />
@@ -153,7 +154,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
           ) : error ? (
             <p className="text-xs text-err">{error}</p>
           ) : (
-            <div className="flex h-full min-h-32 items-center justify-center gap-2 text-xs text-ink-400">
+            <div className="flex h-full items-center justify-center gap-2 text-xs text-ink-400">
               <Loader2 size={14} className="animate-spin" />
               {t('demoLoading')}
             </div>
@@ -195,7 +196,8 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
           aria-label={t('timeline')}
         />
         {step && (
-          <span className="hidden font-mono text-[11px] text-ink-400 sm:inline">
+          // 固定寬度並截斷，函式名稱與深度變化時時間軸才不會左右抖動；窄的容器（左側教學面板）直接隱藏
+          <span className="hidden w-44 truncate text-right font-mono text-[11px] text-ink-400 @xl:inline">
             {step.funcName}()
             {step.depth > 1 && <span className="text-brand"> · {t('depth', { n: step.depth })}</span>}
           </span>
