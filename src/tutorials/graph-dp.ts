@@ -59,6 +59,7 @@ while queue:
     return islands
 `,
         call: 'numIslands([["1", "1", "0", "0"], ["1", "0", "0", "1"], ["0", "0", "1", "1"]])',
+        expected: '2',
       },
     ],
   },
@@ -109,6 +110,7 @@ while queue:
     return taken == numCourses
 `,
         call: 'canFinish(4, [[1, 0], [2, 0], [3, 1], [3, 2]])',
+        expected: 'True',
       },
     ],
   },
@@ -176,6 +178,7 @@ def union(a, b):
     return provinces
 `,
         call: 'findCircleNum([[1, 1, 0, 0], [1, 1, 0, 0], [0, 0, 1, 1], [0, 0, 1, 1]])',
+        expected: '2',
       },
     ],
   },
@@ -224,6 +227,7 @@ return dp[n]`,
     return dp[n]
 `,
         call: 'climbStairs(6)',
+        expected: '13',
       },
       {
         id: 'lc198',
@@ -239,6 +243,7 @@ return dp[n]`,
     return dp[-1]
 `,
         call: 'rob([2, 7, 9, 3, 1])',
+        expected: '12',
       },
       {
         id: 'lc322',
@@ -255,6 +260,7 @@ return dp[n]`,
     return dp[amount] if dp[amount] != float('inf') else -1
 `,
         call: 'coinChange([1, 2, 5], 11)',
+        expected: '3',
       },
     ],
   },
@@ -300,6 +306,7 @@ return dp[m][n]`,
     return dp[m - 1][n - 1]
 `,
         call: 'uniquePaths(3, 4)',
+        expected: '10',
       },
       {
         id: 'lc1143',
@@ -319,6 +326,7 @@ return dp[m][n]`,
     return dp[m][n]
 `,
         call: 'longestCommonSubsequence("abcde", "ace")',
+        expected: '3',
       },
     ],
   },

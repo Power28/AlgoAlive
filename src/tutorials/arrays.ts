@@ -56,6 +56,7 @@ while left < right:
     return []
 `,
         call: 'twoSum([1, 3, 4, 5, 7, 10, 11], 9)',
+        expected: '[3, 4]',
       },
       {
         id: 'lc11',
@@ -80,6 +81,7 @@ while left < right:
     return best
 `,
         call: 'maxArea([1, 8, 6, 2, 5, 4, 8, 3, 7])',
+        expected: '49',
       },
     ],
   },
@@ -128,6 +130,7 @@ return slow`,
     return nums
 `,
         call: 'moveZeroes([0, 1, 0, 3, 12])',
+        expected: '[1, 3, 12, 0, 0]',
       },
       {
         id: 'lc26',
@@ -144,6 +147,7 @@ return slow`,
     return slow
 `,
         call: 'removeDuplicates([0, 0, 1, 1, 1, 2, 2, 3, 3, 4])',
+        expected: '5',
       },
     ],
   },
@@ -197,6 +201,7 @@ for right in range(len(nums)):
     return 0 if best == float('inf') else best
 `,
         call: 'minSubArrayLen(7, [2, 3, 1, 2, 4, 3])',
+        expected: '2',
       },
       {
         id: 'lc3',
@@ -216,6 +221,7 @@ for right in range(len(nums)):
     return best
 `,
         call: 'lengthOfLongestSubstring("abcabcbb")',
+        expected: '3',
       },
     ],
   },
@@ -272,6 +278,7 @@ return -1`,
     return -1
 `,
         call: 'search([-1, 0, 3, 5, 9, 12, 15, 21], 12)',
+        expected: '5',
       },
       {
         id: 'lc35',
@@ -290,6 +297,7 @@ return -1`,
     return lo
 `,
         call: 'searchInsert([1, 3, 5, 6, 8, 10], 7)',
+        expected: '4',
       },
     ],
   },
@@ -337,6 +345,7 @@ for x in nums:
     return prefix
 `,
         call: 'runningSum([3, 1, 2, 10, 1])',
+        expected: '[3, 4, 6, 16, 17]',
       },
       {
         id: 'lc560',
@@ -355,6 +364,7 @@ for x in nums:
     return count
 `,
         call: 'subarraySum([1, 2, 1, 2, 1], 3)',
+        expected: '4',
       },
     ],
   },
@@ -412,6 +422,7 @@ for x in nums:
     return nums
 `,
         call: 'sortColors([2, 0, 2, 1, 1, 0])',
+        expected: '[0, 0, 1, 1, 2, 2]',
       },
       {
         id: 'lc912',
@@ -437,6 +448,7 @@ for x in nums:
     return nums
 `,
         call: 'sortArray([5, 2, 3, 1, 6, 4])',
+        expected: '[1, 2, 3, 4, 5, 6]',
       },
     ],
   },

@@ -26,9 +26,19 @@ jobs:
           node-version: 22
           cache: npm
 
+      # tracer 測試直接在 Python 執行；版本對齊 Pyodide 0.26 內的 Python 3.12
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
       - run: npm ci
 
       - run: npm run build
+
+      # 測試沒過就停在這裡，不會上傳與部署
+      # e2e 會以 vite preview 啟動 dist/，並用 runner 內建的 Google Chrome 操作網站
+      - name: Test
+        run: npm test
 
       - uses: actions/configure-pages@v6
 

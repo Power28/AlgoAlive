@@ -52,6 +52,7 @@ return prev`,
     return prev
 `,
         call: 'reverseList(build_list([1, 2, 3, 4, 5]))',
+        expected: '5 → 4 → 3 → 2 → 1',
       },
       {
         id: 'lc21',
@@ -76,6 +77,7 @@ return prev`,
     return dummy.next
 `,
         call: 'mergeTwoLists(build_list([1, 2, 4]), build_list([1, 3, 4]))',
+        expected: '1 → 1 → 2 → 3 → 4 → 4',
       },
     ],
   },
@@ -121,6 +123,7 @@ while fast and fast.next:
     return slow
 `,
         call: 'middleNode(build_list([1, 2, 3, 4, 5, 6]))',
+        expected: '4 → 5 → 6',
       },
       {
         id: 'lc141',
@@ -141,6 +144,7 @@ while fast and fast.next:
     return False
 `,
         call: 'hasCycle(build_list([3, 2, 0, -4], pos=1))',
+        expected: 'True',
       },
     ],
   },
@@ -188,6 +192,7 @@ while fast and fast.next:
     return 1 + max(left, right)
 `,
         call: 'maxDepth(build_tree([3, 9, 20, null, null, 15, 7]))',
+        expected: '3',
       },
       {
         id: 'lc226',
@@ -204,6 +209,7 @@ while fast and fast.next:
     return root
 `,
         call: 'invertTree(build_tree([4, 2, 7, 1, 3, 6, 9]))',
+        expected: '[4, 7, 2, 9, 6, 3, 1]',
       },
       {
         id: 'lc112',
@@ -220,6 +226,7 @@ while fast and fast.next:
     return hasPathSum(root.left, remaining) or hasPathSum(root.right, remaining)
 `,
         call: 'hasPathSum(build_tree([5, 4, 8, 11, null, 13, 4, 7, 2, null, null, null, 1]), 22)',
+        expected: 'True',
       },
     ],
   },
@@ -278,6 +285,7 @@ while queue:
     return result
 `,
         call: 'levelOrder(build_tree([3, 9, 20, null, null, 15, 7]))',
+        expected: '[[3], [9, 20], [15, 7]]',
       },
     ],
   },
@@ -316,6 +324,7 @@ while queue:
     return node
 `,
         call: 'searchBST(build_tree([4, 2, 7, 1, 3, 6, 9]), 3)',
+        expected: '[3]',
       },
       {
         id: 'lc98',
@@ -334,6 +343,7 @@ while queue:
     return valid(root, float('-inf'), float('inf'))
 `,
         call: 'isValidBST(build_tree([5, 3, 8, 1, 4, 7, 9]))',
+        expected: 'True',
       },
     ],
   },

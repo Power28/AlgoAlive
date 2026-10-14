@@ -11,11 +11,12 @@
 //
 // 需求：本機安裝 Chrome / Edge（或設定 CHROME_PATH），以及含 Pillow 的 Python 3。
 import puppeteer from 'puppeteer-core';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchOptions } from './browser.mjs';
+import { runPython } from './python.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS = path.join(ROOT, 'docs');
@@ -28,26 +29,6 @@ const argValue = (name) => {
 };
 const url = argValue('--url') ?? DEFAULT_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function findBrowser() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/microsoft-edge',
-  ];
-  const found = candidates.find((p) => p && fs.existsSync(p));
-  if (!found) throw new Error('找不到 Chrome / Edge，請設定環境變數 CHROME_PATH 指向瀏覽器執行檔');
-  return found;
-}
 
 /** 開啟網站（全新瀏覽器設定檔 → 預設頁籤 167 / 283 / 1），切到指定範例並執行視覺化。 */
 async function openApp(browser, viewport, exampleId) {
@@ -166,21 +147,14 @@ async function recordFrames(browser, framesDir) {
 
 function buildGif(framesDir) {
   const out = path.join(DOCS, 'move-zeroes.gif');
-  const script = path.join(ROOT, 'scripts', 'make_gif.py');
-  const pythons = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python'];
-  for (const py of pythons) {
-    const res = spawnSync(py, [script, framesDir, out, '1200'], { stdio: 'inherit' });
-    if (res.error?.code === 'ENOENT') continue;
-    if (res.status !== 0) throw new Error(`make_gif.py 執行失敗（${py}），請確認已安裝 Pillow：pip install pillow`);
-    console.log(`✓ ${path.relative(ROOT, out)}`);
-    return;
-  }
-  throw new Error('找不到 Python 3，無法產生 GIF');
+  const { python, status } = runPython([path.join(ROOT, 'scripts', 'make_gif.py'), framesDir, out, '1200']);
+  if (status !== 0) throw new Error(`make_gif.py 執行失敗（${python}），請確認已安裝 Pillow：pip install pillow`);
+  console.log(`✓ ${path.relative(ROOT, out)}`);
 }
 
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'algoalive-frames-'));
 console.log(`Capturing ${url}`);
-const browser = await puppeteer.launch({ executablePath: findBrowser(), headless: true });
+const browser = await puppeteer.launch(launchOptions());
 try {
   await captureScreenshot(browser);
   await captureLibrary(browser);

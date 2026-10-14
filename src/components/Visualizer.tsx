@@ -133,7 +133,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
       {step.event === 'return' && step.returnValue && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
-          <code className="font-semibold">{formatPy(step.returnValue, heap)}</code>
+          <code className="font-semibold" data-return>{formatPy(step.returnValue, heap)}</code>
         </Banner>
       )}
       {step.event === 'exception' && (

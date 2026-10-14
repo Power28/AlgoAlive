@@ -62,6 +62,7 @@ while queue:
     return clones[node]
 `,
         call: 'cloneGraph(build_graph([[2, 4], [1, 3], [2, 4], [1, 3]]))',
+        expected: 'Node(1)',
       },
       {
         id: 'lc797',
@@ -87,6 +88,7 @@ while queue:
     return result
 `,
         call: 'allPathsSourceTarget([[1, 2], [3], [3], []])',
+        expected: '[[0, 1, 3], [0, 2, 3]]',
       },
       {
         id: 'lc785',
@@ -112,6 +114,7 @@ while queue:
     return True
 `,
         call: 'isBipartite([[1, 3], [0, 2], [1, 3], [0, 2]])',
+        expected: 'True',
       },
     ],
   },
@@ -171,6 +174,7 @@ while heap:
     return max(dist.values()) if len(dist) == n else -1
 `,
         call: 'networkDelayTime([[2, 1, 1], [2, 3, 1], [3, 4, 1], [1, 4, 3]], 4, 2)',
+        expected: '2',
       },
     ],
   },

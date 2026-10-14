@@ -1,0 +1,257 @@
+"""直接用 Python tracer 驗證所有教學範例，以及 tracer 本身的行為（不需要瀏覽器）。
+
+用法：python scripts/check_examples.py   （或 npm run test:tracer）
+
+每個範例檢查：
+- 執行沒有錯誤、步數在 MAX_STEPS 以內
+- 回傳值依前端 formatPy 的規則格式化後，等於 src/tutorials/*.ts 裡的 expected
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src" / "runtime"))
+from tracer import MAX_STEPS, algoalive_run  # noqa: E402
+
+# ─────────────── 與 src/lib/pyValue.ts 的 formatPy / formatCell 相同的格式化 ───────────────
+
+GRAPH_FIELDS = re.compile(r"^(neighbors|neighbours|children|adj|adjacent|edges|nbrs)$", re.I)
+
+
+def node_kind(obj):
+    f = obj["fields"]
+    if "left" in f or "right" in f:
+        return "tree"
+    if "next" in f:
+        return "list"
+    for name, v in f.items():
+        items = v.get("items")
+        if items is not None and (GRAPH_FIELDS.match(name) or (items and all(x["type"] == "ref" for x in items))):
+            return "graph"
+    return "object"
+
+
+def ref_target(v, heap):
+    return v["id"] if v and v["type"] == "ref" and v["id"] in heap else None
+
+
+def fmt_cell(v, heap=None):
+    t = v["type"]
+    if t == "ref":
+        val = (heap or {}).get(v["id"], {}).get("fields", {}).get("val")
+        return f"({fmt_cell(val)})" if val else v["cls"]
+    if t == "str":
+        return v["value"]
+    if t == "float" and isinstance(v["value"], str) and v["value"] in ("inf", "-inf"):
+        return "∞" if v["value"] == "inf" else "-∞"
+    if t == "bool":
+        return "T" if v["value"] else "F"
+    return fmt(v, heap)
+
+
+def fmt_float(x):
+    if isinstance(x, str):
+        return f"float('{x}')" if x in ("inf", "-inf", "nan") else x
+    return f"{x:.1f}" if float(x).is_integer() else repr(x)
+
+
+def fmt(v, heap=None):
+    t = v["type"]
+    f = lambda x: fmt(x, heap)  # noqa: E731
+    more = f", …+{v['truncated']}" if v.get("truncated") else ""
+    if t == "none":
+        return "None"
+    if t == "bool":
+        return "True" if v["value"] else "False"
+    if t == "int":
+        return str(v["value"])
+    if t == "float":
+        return fmt_float(v["value"])
+    if t == "str":
+        s = v["value"].replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+        return f"'{s}'"
+    if t == "list":
+        return f"[{', '.join(map(f, v['items']))}{more}]"
+    if t == "deque":
+        return f"deque([{', '.join(map(f, v['items']))}{more}])"
+    if t == "tuple":
+        return f"({f(v['items'][0])},)" if len(v["items"]) == 1 else f"({', '.join(map(f, v['items']))}{more})"
+    if t == "set":
+        return "set()" if not v["items"] else f"{{{', '.join(map(f, v['items']))}{more}}}"
+    if t == "dict":
+        return "{" + ", ".join(f"{f(k)}: {f(x)}" for k, x in v["entries"]) + more + "}"
+    if t == "repr":
+        return v["value"]
+    if t == "ref":
+        return fmt_ref(v, heap)
+    raise ValueError(f"unknown type {t}")
+
+
+def fmt_ref(v, heap):
+    obj = (heap or {}).get(v["id"])
+    if not obj:
+        return f"{v['cls']}(…)"
+    kind = node_kind(obj)
+    none = {"type": "none"}
+    if kind == "list":
+        vals, seen, cur = [], set(), v["id"]
+        while cur and cur not in seen and len(vals) < 30:
+            seen.add(cur)
+            vals.append(fmt_cell(heap[cur]["fields"].get("val", none)))
+            cur = ref_target(heap[cur]["fields"].get("next"), heap)
+        tail = (" ↺" if cur in seen else " → …") if cur else ""
+        return " → ".join(vals) + tail
+    if kind == "tree":
+        out, queue, seen = [], [v["id"]], set()
+        while queue and len(out) < 63:
+            cur = queue.pop(0)
+            if not cur or cur in seen:
+                out.append("null")
+                continue
+            seen.add(cur)
+            fields = heap[cur]["fields"]
+            out.append(fmt_cell(fields.get("val", none)))
+            queue += [ref_target(fields.get("left"), heap), ref_target(fields.get("right"), heap)]
+        while out and out[-1] == "null":
+            out.pop()
+        return f"[{', '.join(out)}]"
+    if kind == "graph":
+        val = obj["fields"].get("val")
+        return f"{obj['cls']}({fmt_cell(val) if val else ''})"
+    fields = ", ".join(f"{k}={x['cls'] + '(…)' if x['type'] == 'ref' else fmt(x)}" for k, x in obj["fields"].items())
+    return f"{obj['cls']}({fields})"
+
+
+# ─────────────── 讀取教學範例 ───────────────
+
+EXAMPLE_RE = re.compile(
+    r"id: '(lc\d+)'.*?code: `(.*?)`,\s*call: '((?:[^'\\]|\\.)*)',\s*expected: '((?:[^'\\]|\\.)*)',",
+    re.S,
+)
+
+
+def unescape(s):
+    return re.sub(r"\\(.)", r"\1", s)
+
+
+def load_examples():
+    examples = []
+    for path in sorted((ROOT / "src" / "tutorials").glob("*.ts")):
+        src = path.read_text(encoding="utf-8")
+        for m in EXAMPLE_RE.finditer(src):
+            examples.append({
+                "id": m.group(1),
+                "file": path.name,
+                "code": m.group(2),
+                "call": unescape(m.group(3)),
+                "expected": unescape(m.group(4)),
+            })
+    return examples
+
+
+def run(code, call):
+    return json.loads(algoalive_run(code, call))
+
+
+# ─────────────── tracer 行為測試 ───────────────
+
+def tracer_cases():
+    """(名稱, 檢查函式)；檢查函式回傳錯誤訊息，通過則回傳 None。"""
+
+    def infinite_loop():
+        r = run("def f():\n    while True:\n        pass\n", "f()")
+        if not (r.get("error", {}).get("timeout") and len(r["steps"]) == MAX_STEPS + 1):
+            return f"expected TimeoutError after {MAX_STEPS} steps, got {r.get('error')} / {len(r['steps'])} steps"
+
+    def syntax_error():
+        r = run("def f(:\n    pass\n", "f()")
+        err = r.get("error") or {}
+        if err.get("type") != "SyntaxError" or err.get("line") != 1:
+            return f"expected SyntaxError at line 1, got {err}"
+
+    def runtime_error_line():
+        r = run("def f(a):\n    x = 1\n    return a[5]\n", "f([1])")
+        err = r.get("error") or {}
+        if err.get("type") != "IndexError" or err.get("line") != 3 or r["steps"][-1]["event"] != "exception":
+            return f"expected IndexError at line 3, got {err}"
+
+    def class_solution():
+        code = "class Solution:\n    def add(self, a, b):\n        total = a + b\n        return total\n"
+        r = run(code, "Solution().add(2, 3)")
+        if fmt(r["returnValue"]) != "5" or any("self" in s["variables"] for s in r["steps"]):
+            return "class Solution: wrong result or `self` leaked into variables"
+
+    def stdout_capture():
+        r = run("def f():\n    print('hi')\n    return 1\n", "f()")
+        if r["steps"][-1]["stdout"] != "hi\n":
+            return f"stdout not captured: {r['steps'][-1]['stdout']!r}"
+
+    def user_listnode_init_skipped():
+        code = (
+            "class ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n\n"
+            "def first(head):\n    return head.val\n"
+        )
+        r = run(code, "first(build_list([7, 8]))")
+        funcs = {s["funcName"] for s in r["steps"]}
+        if funcs != {"first"}:
+            return f"__init__ called from build_list should not be traced, got {funcs}"
+
+    def recursion_stack_refs():
+        code = "def depth(root):\n    if not root:\n        return 0\n    return 1 + max(depth(root.left), depth(root.right))\n"
+        r = run(code, "depth(build_tree([1, 2]))")
+        deep = [s for s in r["steps"] if s["depth"] == 3]
+        if not deep or not deep[0].get("stackRefs") or len(deep[0].get("heap", {})) != 2:
+            return "inner recursive frames should still see the whole tree (heap + stackRefs)"
+
+    return [
+        ("infinite loop stops at MAX_STEPS", infinite_loop),
+        ("syntax error reports line", syntax_error),
+        ("runtime error reports line", runtime_error_line),
+        ("class Solution hides self", class_solution),
+        ("print output is captured", stdout_capture),
+        ("build_list does not trace user __init__", user_listnode_init_skipped),
+        ("recursion keeps whole tree reachable", recursion_stack_refs),
+    ]
+
+
+def main():
+    failures = 0
+    examples = load_examples()
+    if not examples:
+        print("✗ no examples found in src/tutorials/*.ts")
+        return 1
+
+    print(f"Tutorial examples ({len(examples)})")
+    seen = set()
+    for ex in examples:
+        problems = []
+        if ex["id"] in seen:
+            problems.append("duplicate id")
+        seen.add(ex["id"])
+        r = run(ex["code"], ex["call"])
+        if r.get("error"):
+            problems.append(r["error"]["message"])
+        elif len(r["steps"]) >= MAX_STEPS:
+            problems.append(f"{len(r['steps'])} steps (limit {MAX_STEPS})")
+        else:
+            got = fmt(r["returnValue"], r.get("returnHeap"))
+            if got != ex["expected"]:
+                problems.append(f"expected {ex['expected']!r}, got {got!r}")
+        mark = "✗" if problems else "✓"
+        print(f"  {mark} {ex['id']:<7} {len(r['steps']):>3} steps  {'; '.join(problems)}")
+        failures += bool(problems)
+
+    print("Tracer behaviour")
+    for name, check in tracer_cases():
+        problem = check()
+        print(f"  {'✗' if problem else '✓'} {name}{'  — ' + problem if problem else ''}")
+        failures += bool(problem)
+
+    print(f"\n{'FAILED' if failures else 'PASSED'}: {failures} failure(s)")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

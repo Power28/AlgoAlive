@@ -39,6 +39,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return best
 `,
         call: 'maxProfit([7, 1, 5, 3, 6, 4])',
+        expected: '5',
       },
       {
         id: 'lc55',
@@ -55,6 +56,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return True
 `,
         call: 'canJump([2, 3, 1, 1, 4])',
+        expected: 'True',
       },
     ],
   },
@@ -109,6 +111,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return result
 `,
         call: 'subsets([1, 2, 3])',
+        expected: '[[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]',
       },
       {
         id: 'lc46',
@@ -138,6 +141,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return result
 `,
         call: 'permute([1, 2, 3])',
+        expected: '[[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]',
       },
     ],
   },
@@ -181,6 +185,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return merged
 `,
         call: 'merge([[1, 3], [8, 10], [2, 6], [15, 18]])',
+        expected: '[[1, 6], [8, 10], [15, 18]]',
       },
     ],
   },
@@ -221,6 +226,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return result
 `,
         call: 'singleNumber([4, 1, 2, 1, 2])',
+        expected: '4',
       },
       {
         id: 'lc191',
@@ -237,6 +243,7 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     return count
 `,
         call: 'hammingWeight(11)',
+        expected: '3',
       },
     ],
   },

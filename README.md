@@ -64,7 +64,21 @@ npm run dev
 npm run build   # 輸出至 dist/，可直接部署到 GitHub Pages / Netlify / Vercel
 ```
 
-push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置並部署到 GitHub Pages。
+push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置、**跑完測試**，通過後才部署到 GitHub Pages。
+
+### 測試
+
+```bash
+npm run build   # e2e 測試的是 dist/，先建置
+npm test        # = test:tracer + test:e2e
+```
+
+| 指令 | 內容 |
+|---|---|
+| `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
+| `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
+
+每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
 
 ### 更新 README 截圖與 GIF
 

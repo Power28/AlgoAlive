@@ -9,6 +9,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test": "npm run test:tracer && npm run test:e2e",
+    "test:tracer": "node scripts/python.mjs scripts/check_examples.py",
+    "test:e2e": "node scripts/e2e.mjs",
     "capture": "node scripts/capture.mjs"
   },
   "dependencies": {

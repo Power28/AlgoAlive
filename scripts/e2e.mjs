@@ -1,0 +1,227 @@
+// 端對端測試：用 headless Chrome 實際操作網站
+//
+//   npm run test:e2e                                   # 先 npm run build；自動以 vite preview 啟動 dist/
+//   npm run test:e2e -- --url http://localhost:5173/   # 測本機 dev server
+//   npm run test:e2e -- --url https://power28.github.io/AlgoAlive/
+//
+// 檢查：
+// - 每個教學範例都能從教學庫開啟、執行到最後一步，畫面上的回傳值等於 src/tutorials 的 expected
+// - 頁籤：預設頁籤、新增空白頁籤並執行、重新命名、重新整理後仍保留、關閉
+// - 語言切換
+// - 整個過程瀏覽器主控台沒有錯誤
+import puppeteer from 'puppeteer-core';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { launchOptions } from './browser.mjs';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PREVIEW_PORT = 4179;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const args = process.argv.slice(2);
+const urlArg = args.includes('--url') ? args[args.indexOf('--url') + 1] : undefined;
+
+// ─────────────── 讀取教學範例的 expected ───────────────
+
+const EXAMPLE_RE = /id: '(lc\d+)'.*?call: '((?:[^'\\]|\\.)*)',\s*expected: '((?:[^'\\]|\\.)*)',/gs;
+const unescape = (s) => s.replace(/\\(.)/g, '$1');
+
+function loadExpected() {
+  const dir = path.join(ROOT, 'src', 'tutorials');
+  const expected = new Map();
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    for (const m of src.matchAll(EXAMPLE_RE)) expected.set(m[1], unescape(m[3]));
+  }
+  return expected;
+}
+
+// ─────────────── 伺服器 ───────────────
+
+async function waitForServer(url, timeoutMs = 30_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    try {
+      if ((await fetch(url)).ok) return;
+    } catch {
+      // 還沒起來
+    }
+    await sleep(300);
+  }
+  throw new Error(`server did not start: ${url}`);
+}
+
+async function startPreview() {
+  if (!fs.existsSync(path.join(ROOT, 'dist', 'index.html'))) {
+    throw new Error('dist/ not found — run `npm run build` first, or pass --url');
+  }
+  const vite = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+  const child = spawn(process.execPath, [vite, 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+  });
+  const url = `http://localhost:${PREVIEW_PORT}/`;
+  await waitForServer(url);
+  return { url, stop: () => child.kill() };
+}
+
+// ─────────────── 測試工具 ───────────────
+
+const results = [];
+function record(name, problem) {
+  results.push({ name, problem });
+  console.log(`  ${problem ? '✗' : '✓'} ${name}${problem ? `  — ${problem}` : ''}`);
+}
+
+async function openApp(page, url) {
+  const target = new URL(url);
+  target.searchParams.set('lang', 'en');
+  await page.goto(target.href, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('[data-runtime="ready"]', { timeout: 120_000 });
+}
+
+/** 執行目前頁籤並跳到最後一步，回傳畫面上的回傳值與錯誤 */
+async function runActiveTab(page) {
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(
+    () => /Step \d+ \/ [1-9]\d*/.test(document.body.innerText) || document.querySelector('main .text-err'),
+    { timeout: 30_000 },
+  );
+  await page.click('[data-action="last"]');
+  await sleep(300);
+  return page.evaluate(() => {
+    const panel = document.querySelectorAll('main > section')[1];
+    return {
+      returned: panel.querySelector('[data-return]')?.textContent ?? null,
+      error: panel.querySelector('.text-err')?.textContent ?? null,
+    };
+  });
+}
+
+const tabTitles = (page) => page.$$eval('[role="tab"]', (els) => els.map((e) => e.innerText.trim()));
+
+// ─────────────── 測試 ───────────────
+
+async function testExamples(page, expected) {
+  console.log(`Tutorial examples (${expected.size})`);
+  await page.click('[data-action="library"]');
+  await page.waitForSelector('[data-topic]');
+  const topics = await page.$$eval('[data-topic]', (els) => els.map((e) => e.dataset.topic));
+  await page.keyboard.press('Escape');
+
+  const seen = new Set();
+  for (const topic of topics) {
+    await page.click('[data-action="library"]');
+    await page.waitForSelector(`[data-topic="${topic}"]`);
+    await page.click(`[data-topic="${topic}"]`);
+    const ids = await page.$$eval('[data-example]', (els) => els.map((e) => e.dataset.example));
+    await page.keyboard.press('Escape');
+
+    for (const id of ids) {
+      seen.add(id);
+      await page.click('[data-action="library"]');
+      await page.waitForSelector(`[data-topic="${topic}"]`);
+      await page.click(`[data-topic="${topic}"]`);
+      await page.waitForSelector(`[data-example="${id}"]`);
+      await page.click(`[data-example="${id}"]`);
+      await sleep(250);
+      const { returned, error } = await runActiveTab(page);
+      const want = expected.get(id);
+      let problem = null;
+      if (error) problem = error;
+      else if (want === undefined) problem = 'no expected value in src/tutorials';
+      else if (returned !== want) problem = `expected ${JSON.stringify(want)}, got ${JSON.stringify(returned)}`;
+      record(`${id} (${topic})`, problem);
+      // 關掉剛開的頁籤，避免頁籤列無限變長
+      await page.click('[role="tab"][aria-selected="true"] button');
+    }
+  }
+  const missing = [...expected.keys()].filter((id) => !seen.has(id));
+  record('every example is reachable from the library', missing.length ? `missing: ${missing.join(', ')}` : null);
+}
+
+async function testTabs(page, url) {
+  console.log('Tabs');
+  const initial = await tabTitles(page);
+  record('three default tabs on first visit', initial.length === 3 ? null : `got ${JSON.stringify(initial)}`);
+
+  // 新增空白頁籤並執行（BLANK_CALL = solve([1, 2, 3, 4]) → 10）
+  await page.click('[data-action="new-tab"]');
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.innerText.includes('Blank tab')).click());
+  await sleep(400);
+  const blank = await runActiveTab(page);
+  record('new blank tab runs', blank.returned === '10' ? null : `got ${JSON.stringify(blank)}`);
+
+  // 雙擊重新命名
+  const active = await page.$('[role="tab"][aria-selected="true"]');
+  await active.click({ count: 2 });
+  await page.waitForSelector('[role="tab"] input');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('KeyA');
+  await page.keyboard.up('Control');
+  await page.keyboard.type('My practice');
+  await page.keyboard.press('Enter');
+  await sleep(200);
+  const renamed = await tabTitles(page);
+  record('double-click renames a tab', renamed.includes('My practice') ? null : `got ${JSON.stringify(renamed)}`);
+
+  // 重新整理後仍保留（localStorage 會在 300ms 後寫入）
+  await sleep(600);
+  await openApp(page, url);
+  const reloaded = await tabTitles(page);
+  record('tabs survive a reload', reloaded.length === initial.length + 1 && reloaded.includes('My practice') ? null : `got ${JSON.stringify(reloaded)}`);
+
+  // 關閉
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.innerText.includes('My practice'));
+    tab.querySelector('button').click();
+  });
+  await sleep(200);
+  const closed = await tabTitles(page);
+  record('closing a tab removes it', closed.includes('My practice') ? `got ${JSON.stringify(closed)}` : null);
+}
+
+async function testLanguage(page) {
+  console.log('Language');
+  await page.click('[data-action="lang"]');
+  await sleep(200);
+  const zh = await page.$eval('[data-action="visualize"]', (b) => b.innerText.trim());
+  record('switch to Chinese', zh === '視覺化' ? null : `visualize button says ${JSON.stringify(zh)}`);
+  await page.click('[data-action="lang"]');
+  await sleep(200);
+  const en = await page.$eval('[data-action="visualize"]', (b) => b.innerText.trim());
+  record('switch back to English', en === 'Visualize' ? null : `visualize button says ${JSON.stringify(en)}`);
+}
+
+// ─────────────── main ───────────────
+
+const expected = loadExpected();
+const server = urlArg ? { url: urlArg, stop: () => {} } : await startPreview();
+console.log(`Testing ${server.url}`);
+
+const browser = await puppeteer.launch(launchOptions({ defaultViewport: { width: 1440, height: 860 } }));
+const consoleErrors = [];
+try {
+  const page = await browser.newPage();
+  page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
+  page.on('pageerror', (e) => consoleErrors.push(String(e)));
+  await openApp(page, server.url);
+
+  await testTabs(page, server.url);
+  await testLanguage(page);
+  await testExamples(page, expected);
+
+  console.log('Console');
+  record('no console errors', consoleErrors.length ? consoleErrors.slice(0, 5).join(' | ') : null);
+} catch (err) {
+  record('test run', String(err?.stack ?? err));
+} finally {
+  await browser.close();
+  server.stop();
+}
+
+const failures = results.filter((r) => r.problem).length;
+console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${results.length - failures}/${results.length} checks`);
+process.exit(failures ? 1 : 0);

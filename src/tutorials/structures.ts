@@ -46,6 +46,7 @@ for i, x in enumerate(nums):
     return []
 `,
         call: 'twoSum([3, 8, 11, 2, 15, 7], 9)',
+        expected: '[3, 5]',
       },
       {
         id: 'lc242',
@@ -66,6 +67,7 @@ for i, x in enumerate(nums):
     return True
 `,
         call: 'isAnagram("anagram", "nagaram")',
+        expected: 'True',
       },
     ],
   },
@@ -121,6 +123,7 @@ return not stack`,
     return not stack
 `,
         call: 'isValid("([{}])[]")',
+        expected: 'True',
       },
       {
         id: 'lc150',
@@ -147,6 +150,7 @@ return not stack`,
     return stack[0]
 `,
         call: 'evalRPN(["4", "13", "5", "/", "+"])',
+        expected: '6',
       },
     ],
   },
@@ -198,6 +202,7 @@ for i, x in enumerate(nums):
     return answer
 `,
         call: 'dailyTemperatures([73, 74, 75, 71, 69, 72, 76, 73])',
+        expected: '[1, 1, 4, 2, 1, 1, 0, 0]',
       },
       {
         id: 'lc496',
@@ -215,6 +220,7 @@ for i, x in enumerate(nums):
     return [next_greater.get(x, -1) for x in nums1]
 `,
         call: 'nextGreaterElement([4, 1, 2], [1, 3, 4, 2])',
+        expected: '[-1, 3, -1]',
       },
     ],
   },
@@ -263,6 +269,7 @@ return heap[0]`,
     return heap[0]
 `,
         call: 'findKthLargest([3, 2, 1, 5, 6, 4], 2)',
+        expected: '5',
       },
       {
         id: 'lc347',
@@ -280,6 +287,7 @@ return heap[0]`,
     return [num for freq, num in heap]
 `,
         call: 'topKFrequent([1, 1, 1, 2, 2, 3], 2)',
+        expected: '[2, 1]',
       },
     ],
   },

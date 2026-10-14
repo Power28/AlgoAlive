@@ -12,6 +12,11 @@ export interface Example {
   difficulty: Difficulty;
   code: string;
   call: string;
+  /**
+   * 預期的回傳值，寫法與畫面上「returned」橫幅相同（例如 `[3, 4]`、`5 → 4 → 3 → 2 → 1`）。
+   * scripts/check_examples.py 與 scripts/e2e.mjs 都會拿它比對。
+   */
+  expected: string;
   /** 這題觀察重點 */
   note?: L;
 }
