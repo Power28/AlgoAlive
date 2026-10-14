@@ -292,6 +292,26 @@ async function testLogic(page) {
   record('bitwise calculation shows binary rows', /11 & 10[\s\S]*bitwise[\s\S]*\(11\)[\s\S]*\(10\)/i.test(bits) ? null : `got ${JSON.stringify(bits)}`);
 }
 
+async function testContext(page) {
+  console.log('Loops & calls');
+  // 預設頁籤 283：for fast in range(len(nums)) → 第 1 / 5 圈；沒有遞迴，不顯示呼叫堆疊
+  await page.click('[data-tab-example="lc283"]');
+  await sleep(300);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  // 走到第一次出現迴圈資訊為止（第 1 圈）
+  const inLoop = () => page.evaluate(() => /pass \d/.test(document.querySelector('main [data-loops]')?.innerText ?? ''));
+  for (let i = 0; i < 6 && !(await inLoop()); i++) await page.click('[data-action="next"]');
+  const loopText = await page.evaluate(() => document.querySelector('main [data-loops]')?.innerText ?? '');
+  record('loop row shows the pass number', /for fast in range\(len\(nums\)\)[\s\S]*pass 1 \/ 5/.test(loopText) ? null : `got ${JSON.stringify(loopText)}`);
+  const hasStack = await page.$('main [data-call-stack]');
+  record('no call stack row without nested calls', hasStack ? 'call stack row is shown for a single function' : null);
+  // 104：遞迴到 root=None 時，堆疊有三層
+  const stackText = await openAndStepTo(page, 'tree-dfs', 'lc104', '[data-call-stack]', 'root=None');
+  const frames = (stackText.match(/maxDepth/g) ?? []).length;
+  record('call stack shows each recursive call', frames >= 3 && /root=\(3\)/.test(stackText) ? null : `got ${JSON.stringify(stackText)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -323,6 +343,7 @@ try {
   await testCondition(page);
   await testCalc(page);
   await testLogic(page);
+  await testContext(page);
   await testDemo(page);
   await testExamples(page, expected);
 

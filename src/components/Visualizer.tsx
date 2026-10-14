@@ -13,6 +13,7 @@ import { LinkedListView, TreeView, type NodeLabel } from './StructureViews';
 import { GraphView } from './GraphView';
 import { ConditionPanel } from './ConditionPanel';
 import { CalcPanel } from './CalcPanel';
+import { ContextBar } from './ContextBar';
 import { cellsOf, gridCellsOf, stepMarks } from '../lib/stepMarks';
 import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
@@ -23,12 +24,14 @@ interface Props {
   indexMap: IndexMap;
   /** 最上方卡片欄位的固定高度（px，見 infoSlotHeight）；沒給時卡片直接疊在內容上方 */
   slotHeight?: number;
+  /** 呼叫堆疊 / 迴圈列（見 contextInfo）；沒給時不顯示 */
+  context?: { stack: boolean; loops: boolean; frameKeys: string[] };
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight }: Props) {
+export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -113,6 +116,12 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight }: Props
   const pointerColors = new Map<string, string>();
   const pointersByList = sequences.map((s) => {
     const ps = pointersFor(vars, s.name, s.items.length, indexMap, gridVars);
+    // for num in nums：沒有索引變數，用迴圈目前的圈數在 nums 上標出 num
+    for (const loop of step.event === 'line' ? (step.loops ?? []) : []) {
+      if (loop.seq !== s.name || !loop.item || loop.done || ps.some((p) => p.name === loop.item)) continue;
+      const index = loop.iteration - 1;
+      if (index >= 0 && index < s.items.length) ps.push({ name: loop.item, label: loop.item, index, color: pointerColor(loop.item) });
+    }
     ps.forEach((p) => pointerColors.set(p.name, p.color));
     return ps;
   });
@@ -159,6 +168,9 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight }: Props
   return (
     <HeapContext.Provider value={heap}>
     <div className="flex flex-col gap-6">
+      {context && (
+        <ContextBar step={step} heap={heap} showStack={context.stack} showLoops={context.loops} frameKeys={context.frameKeys} />
+      )}
       {slotHeight === undefined ? (
         cards
       ) : (

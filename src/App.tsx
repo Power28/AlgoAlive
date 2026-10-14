@@ -12,6 +12,7 @@ import { useLang, useT } from './i18n';
 import { computeCellKeys } from './lib/cellKeys';
 import { analyzeIndexing } from './lib/indexing';
 import { infoSlotHeight } from './lib/infoSlot';
+import { contextInfo } from './lib/context';
 import { lineHint } from './components/ConditionPanel';
 import { runner, type RuntimeStatus } from './runtime/runner';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
@@ -54,6 +55,7 @@ export default function App() {
   const indexMap = useMemo(() => analyzeIndexing(run?.code ?? ''), [run?.code]);
   // 卡片欄位高度整段執行只算一次，播放時固定
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
+  const context = useMemo(() => contextInfo(steps), [steps]);
   const playback = usePlayback(steps.length, trace);
   const step = steps[playback.index];
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
@@ -254,7 +256,10 @@ export default function App() {
             {run?.error && <ErrorBox message={run.error} />}
             {error && <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />}
             {step ? (
-              <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap} slotHeight={slotHeight} />
+              <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap}
+                slotHeight={slotHeight}
+                context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
+              />
             ) : (
               !error && !run?.error && <EmptyState status={status} />
             )}

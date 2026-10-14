@@ -42,6 +42,37 @@ export interface ExecutionStep {
   condition?: Condition;
   /** 這一行若是算術賦值（mid = (lo + hi) // 2、left += 1、return 1 + x…），其逐步計算過程 */
   calc?: Calc;
+  /** 由外而內正在進行的迴圈 */
+  loops?: LoopInfo[];
+  /** 由外而內的呼叫堆疊（最後一個是目前的 frame） */
+  stack?: StackFrame[];
+  /** 這一步是剛進入一次新的函式呼叫 */
+  entered?: boolean;
+}
+
+export interface LoopInfo {
+  /** 迴圈 header 所在行 */
+  line: number;
+  kind: 'for' | 'while';
+  /** header 原文，例如 "for i in range(3, n + 1)" */
+  src: string;
+  /** 第幾圈（1 起算）；在 header 行時代表正在檢查是否還有這一圈 */
+  iteration: number;
+  /** 總圈數（可以安全得知時才有，例如 range / 序列長度） */
+  total?: number;
+  /** 最後一次檢查，迴圈即將結束 */
+  done?: boolean;
+  /** for item in seq：被走訪的序列與目標變數，用來在序列上標出目前那一格 */
+  seq?: string;
+  item?: string;
+}
+
+export interface StackFrame {
+  func: string;
+  /** 這一層目前停在哪一行（外層代表呼叫下一層的那一行） */
+  line: number;
+  /** [參數名, 簡短的值] */
+  args: [string, string][];
 }
 
 export interface Calc {

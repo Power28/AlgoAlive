@@ -274,10 +274,12 @@ class _CondAnalyzer:
         self.by_line = {}
         self.calc_by_line = {}
         self.compiled = {}
+        self.tree = None
         try:
             tree = ast.parse(code)
         except SyntaxError:
             return
+        self.tree = tree
         for node in ast.walk(tree):
             if not isinstance(node, ast.stmt) or node.lineno in self.by_line or node.lineno in self.calc_by_line:
                 continue
@@ -604,6 +606,132 @@ class _CondAnalyzer:
         return cond
 
 
+# ─────────────── 迴圈圈數與呼叫堆疊 ───────────────
+
+_SIZED_CALLS = {"range", "enumerate", "reversed", "zip"}
+_DICT_VIEWS = {"items", "keys", "values"}
+
+
+def _short_value(value, ctx):
+    """呼叫堆疊上參數的簡短顯示"""
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        r = repr(value)
+        return r if len(r) <= 14 else r[:13] + "…'"
+    if _is_object(value):
+        val = getattr(value, "val", None)
+        return f"({val!r})" if isinstance(val, (int, float, str)) else type(value).__name__
+    if isinstance(value, (list, tuple, set, dict, collections.deque)):
+        r = repr(value)
+        return r if len(r) <= 16 else f"{type(value).__name__}[{len(value)}]"
+    return type(value).__name__
+
+
+class _LoopTracker:
+    """依每個 frame 記錄目前在每個迴圈的第幾圈，以及整段呼叫堆疊。"""
+
+    def __init__(self, analyzer):
+        self.analyzer = analyzer
+        self.loops = []  # (header 行, 結束行, 種類, header 原文, 迭代運算式, 目標)
+        self.frames = {}  # id(frame) → {"last": 上一行, 迴圈 header 行: {"count", "total"}}
+        tree = analyzer.tree
+        if tree is None:
+            return
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.For, ast.While)):
+                header = analyzer.code.splitlines()[node.lineno - 1].strip().rstrip(":")
+                self.loops.append((
+                    node.lineno, node.end_lineno, "for" if isinstance(node, ast.For) else "while", header,
+                    node.iter if isinstance(node, ast.For) else None,
+                    node.target if isinstance(node, ast.For) else None,
+                ))
+        self.loops.sort()
+
+    def _total(self, iter_node, frame):
+        """可以安全得知長度的迭代對象：range / enumerate / reversed / zip、序列變數、dict.items()…"""
+        if iter_node is None:
+            return None
+        try:
+            if isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name) and iter_node.func.id in _SIZED_CALLS:
+                args = [self.analyzer._eval(a, frame) for a in iter_node.args]
+                name = iter_node.func.id
+                if name == "range":
+                    return len(range(*args))
+                lengths = [len(a) for a in args]
+                return min(lengths) if name == "zip" else lengths[0]
+            if (isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Attribute)
+                    and iter_node.func.attr in _DICT_VIEWS and not iter_node.args):
+                return len(self.analyzer._eval(iter_node.func.value, frame))
+            if isinstance(iter_node, _LEAF_NODES):
+                value = self.analyzer._eval(iter_node, frame)
+                if isinstance(value, (list, tuple, str, dict, set, collections.deque, range)):
+                    return len(value)
+        except (_Unknown, TypeError):
+            return None
+        return None
+
+    @staticmethod
+    def _seq_name(iter_node):
+        """for x in nums / for i, x in enumerate(nums) 中被走訪的序列名稱"""
+        if isinstance(iter_node, ast.Name):
+            return iter_node.id
+        if (isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name)
+                and iter_node.func.id == "enumerate" and iter_node.args and isinstance(iter_node.args[0], ast.Name)):
+            return iter_node.args[0].id
+        return None
+
+    def on_line(self, frame):
+        state = self.frames.setdefault(id(frame), {"last": None})
+        line = frame.f_lineno
+        last = state["last"]
+        active = []
+        for header, end, kind, src, iter_node, target in self.loops:
+            if not (header <= line <= end):
+                continue
+            loop = state.get(header)
+            if line == header:
+                # 從迴圈外面走到 header：新的一輪迴圈開始
+                if loop is None or last is None or not (header <= last <= end):
+                    loop = {"count": 1, "total": self._total(iter_node, frame) if kind == "for" else None}
+                    state[header] = loop
+                else:
+                    loop["count"] += 1
+            if loop is None:
+                continue
+            info = {"line": header, "kind": kind, "src": src, "iteration": loop["count"]}
+            if loop["total"] is not None:
+                info["total"] = loop["total"]
+                if loop["count"] > loop["total"]:
+                    info["done"] = True
+            seq = self._seq_name(iter_node)
+            if seq and isinstance(target, ast.Name) and isinstance(iter_node, ast.Name):
+                # for num in nums：沒有索引變數，用目標變數名稱標出目前走到哪一格
+                info["seq"] = seq
+                info["item"] = target.id
+            active.append(info)
+        state["last"] = line
+        return active
+
+    def on_return(self, frame):
+        self.frames.pop(id(frame), None)
+
+    @staticmethod
+    def stack(frame, ctx):
+        """由外而內的使用者呼叫：函式名稱、目前停在哪一行、參數值"""
+        frames = []
+        f = frame
+        while f is not None:
+            if f.f_code.co_filename == USER_FILE:
+                code = f.f_code
+                names = code.co_varnames[:code.co_argcount + code.co_kwonlyargcount]
+                args = [[n, _short_value(f.f_locals.get(n), ctx)] for n in names if n != "self" and n in f.f_locals]
+                frames.append({"func": code.co_name, "line": f.f_lineno, "args": args})
+            f = f.f_back
+        frames.reverse()
+        return frames
+
+
 def _visible_locals(frame):
     for name, value in frame.f_locals.items():
         # ".0" 之類是 comprehension / generator 的內部迭代器變數
@@ -660,6 +788,8 @@ def algoalive_run(code, call_src):
     registry = _Registry()
     no_value = object()
     conditions = _CondAnalyzer(code, registry)
+    loops = _LoopTracker(conditions)
+    entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
     def record(frame, event, ret=no_value, **extra):
         if len(steps) >= MAX_STEPS:
@@ -680,7 +810,16 @@ def algoalive_run(code, call_src):
             step["stackRefs"] = stack_refs
         if ret is not no_value:
             step["returnValue"] = _ser(ret, ctx)
+        stack = _LoopTracker.stack(frame, ctx)
+        if len(stack) > 0:
+            step["stack"] = stack
         if event == "line":
+            if id(frame) not in entered:
+                entered.add(id(frame))
+                step["entered"] = True
+            active = loops.on_line(frame)
+            if active:
+                step["loops"] = active
             cond = conditions.evaluate(frame, ctx)
             if cond:
                 step["condition"] = cond
@@ -706,6 +845,8 @@ def algoalive_run(code, call_src):
             raising.discard(id(frame))  # 例外已被 try/except 接住，恢復正常
             record(frame, "line")
         elif event == "return":
+            loops.on_return(frame)
+            entered.discard(id(frame))
             if id(frame) in raising:
                 raising.discard(id(frame))
             else:

@@ -285,6 +285,36 @@ def tracer_cases():
         if not calc or calc.get("bits") != [{"op": "&", "left": 11, "right": 10, "result": 10}]:
             return f"expected 11 & 10 = 10 in bits, got {calc and calc.get('bits')}"
 
+    def loop_iterations():
+        r = run("def f(nums):\n    total = 0\n    for num in nums:\n        total += num\n    return total\n", "f([5, 6])")
+        seen = [(s["lineNumber"], l["iteration"], l.get("total"), bool(l.get("done")))
+                for s in r["steps"] for l in s.get("loops", [])]
+        want = [(3, 1, 2, False), (4, 1, 2, False), (3, 2, 2, False), (4, 2, 2, False), (3, 3, 2, True)]
+        if seen != want:
+            return f"expected passes {want}, got {seen}"
+        loop = next(l for s in r["steps"] for l in s.get("loops", []))
+        if loop.get("seq") != "nums" or loop.get("item") != "num":
+            return f"for num in nums should point `num` at `nums`, got {loop}"
+
+    def nested_loop_restarts():
+        code = "def g(rows, cols):\n    c = 0\n    for r in range(rows):\n        for k in range(cols):\n            c += 1\n    return c\n"
+        r = run(code, "g(2, 2)")
+        inner = [l["iteration"] for s in r["steps"] if s["lineNumber"] == 5 for l in s.get("loops", []) if l["line"] == 4]
+        if inner != [1, 2, 1, 2]:
+            return f"inner loop should restart from 1 on each outer pass, got {inner}"
+
+    def call_stack_frames():
+        code = "def depth(root):\n    if not root:\n        return 0\n    return 1 + max(depth(root.left), depth(root.right))\n"
+        r = run(code, "depth(build_tree([3, 9]))")
+        deepest = max(r["steps"], key=lambda s: len(s.get("stack", [])))
+        frames = [(f["func"], f["args"]) for f in deepest["stack"]]
+        want = [("depth", [["root", "(3)"]]), ("depth", [["root", "(9)"]]), ("depth", [["root", "None"]])]
+        entered = sum(1 for s in r["steps"] if s.get("entered"))
+        if frames != want:
+            return f"expected stack {want}, got {frames}"
+        if entered != 5:  # depth(3)、depth(9)、depth(9).left、depth(9).right、depth(3).right
+            return f"expected 5 calls to be marked as entered, got {entered}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -303,6 +333,9 @@ def tracer_cases():
         ("and / or return the operand itself", logic_or_returns_operand),
         ("logic tree records short-circuit", logic_tree_short_circuit),
         ("bitwise operands are recorded in binary", bits_recorded),
+        ("loop passes are counted", loop_iterations),
+        ("nested loops restart their count", nested_loop_restarts),
+        ("call stack lists frames and arguments", call_stack_frames),
     ]
 
 
