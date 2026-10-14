@@ -36,6 +36,15 @@ npm run build   # 輸出至 dist/，可直接部署到 GitHub Pages / Netlify / 
 
 push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置並部署到 GitHub Pages。
 
+### 更新 README 截圖與 GIF
+
+```bash
+npm run capture                                  # 錄線上網站
+npm run capture -- --url http://localhost:5173/  # 錄本機 dev server（先 npm run dev）
+```
+
+會重新產生 `docs/screenshot.png`（1. Two Sum）與 `docs/move-zeroes.gif`（283. Move Zeroes）。需要本機安裝 Chrome 或 Edge（找不到時設定 `CHROME_PATH`），以及含 [Pillow](https://pypi.org/project/pillow/) 的 Python 3。腳本在 [scripts/](scripts/)。
+
 ## 架構
 
 ```
