@@ -77,6 +77,7 @@ const STRINGS = {
   copy: { en: 'Copy', zh: '複製' },
   copied: { en: 'Copied', zh: '已複製' },
   condTitle: { en: 'Condition', zh: '條件判斷' },
+  calcTitle: { en: 'Calculation', zh: '計算' },
   condSkipped: { en: 'skipped (short-circuit)', zh: '跳過（短路）' },
   condUnknown: { en: 'not evaluated', zh: '未求值' },
   condUnknownHint: {

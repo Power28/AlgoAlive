@@ -40,6 +40,25 @@ export interface ExecutionStep {
   stackRefs?: { depth: number; name: string; id: string }[];
   /** 這一行若是條件式（if / while / return a < b…），其求值過程 */
   condition?: Condition;
+  /** 這一行若是算術賦值（mid = (lo + hi) // 2、left += 1、return 1 + x…），其逐步計算過程 */
+  calc?: Calc;
+}
+
+export interface Calc {
+  /** assign：一般賦值；aug：+= 這類；return：回傳算式 */
+  kind: 'assign' | 'aug' | 'return';
+  /** 敘述原文，例如 "mid = (lo + hi) // 2" */
+  src: string;
+  expr: string;
+  /** 逐步化簡，例如 ["(0 + 7) // 2", "7 // 2", "3"] */
+  stages: string[];
+  result: PyValue;
+  resultDisplay: string;
+  /** 右邊讀到的變數 / 格子 / 節點 */
+  terms: ConditionTerm[];
+  /** 寫入的目標，例如 "mid"、"dp[i]" */
+  target?: string;
+  targetLoc?: TermLocation;
 }
 
 /** 比較運算元在畫面上的位置，用來替被比較的格子 / 變數 / 節點加框 */

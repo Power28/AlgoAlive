@@ -2,7 +2,7 @@ import type { PyValue, SequenceValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { Header, STR_COLOR } from './ArrayView';
 import { useHeap } from '../lib/heapContext';
-import { compareOutline } from './ConditionPanel';
+import { markOutline } from '../lib/stepMarks';
 
 const CELL = 40;
 
@@ -21,9 +21,11 @@ interface Props {
   marks: GridMark[];
   /** 目前條件式正在比較的格子："row:col" */
   compared?: Set<string>;
+  /** 計算結果要寫入的格子："row:col" */
+  written?: Set<string>;
 }
 
-export function GridView({ name, value, prev, marks, compared }: Props) {
+export function GridView({ name, value, prev, marks, compared, written }: Props) {
   const heap = useHeap();
   const rows = value.items as SequenceValue[];
   const prevRows = prev?.type === 'list' ? (prev.items as SequenceValue[]) : undefined;
@@ -70,7 +72,7 @@ export function GridView({ name, value, prev, marks, compared }: Props) {
                         borderColor: mark?.color ?? '#3e3e3e',
                         boxShadow: mark ? `0 0 0 1px ${mark.color}66, 0 0 12px ${mark.color}33` : undefined,
                         backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a',
-                        ...compareOutline(!!compared?.has(`${r}:${c}`)),
+                        ...markOutline(!!compared?.has(`${r}:${c}`), !!written?.has(`${r}:${c}`)),
                       }}
                     >
                       {text}

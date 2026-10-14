@@ -11,7 +11,9 @@ import { DictView, ScalarGrid, SetView } from './CollectionViews';
 import { GridView, type GridMark } from './GridView';
 import { LinkedListView, TreeView, type NodeLabel } from './StructureViews';
 import { GraphView } from './GraphView';
-import { ConditionPanel, compareMarks } from './ConditionPanel';
+import { ConditionPanel } from './ConditionPanel';
+import { CalcPanel } from './CalcPanel';
+import { cellsOf, gridCellsOf, stepMarks } from '../lib/stepMarks';
 import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
 interface Props {
@@ -44,11 +46,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
     structureVars.add(name);
   }
   const kinds = new Set(Object.values(heap).map(nodeKind));
-  const marks = compareMarks(step.event === 'line' ? step.condition : undefined);
-  const cellsOf = (name: string) =>
-    new Set([...marks.cells].filter((k) => k.startsWith(`${name}:`)).map((k) => Number(k.slice(name.length + 1))));
-  const gridCellsOf = (name: string) =>
-    new Set([...marks.gridCells].filter((k) => k.startsWith(`${name}:`)).map((k) => k.slice(name.length + 1)));
+  const { reads: marks, writes } = stepMarks(step);
   const trail = new Map<string, string[]>();
   for (const ref of step.stackRefs ?? []) trail.set(ref.id, [...(trail.get(ref.id) ?? []), `${ref.name}·${ref.depth}`]);
 
@@ -137,6 +135,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
     <HeapContext.Provider value={heap}>
     <div className="flex flex-col gap-6">
       {step.event === 'line' && step.condition && <ConditionPanel condition={step.condition} heap={heap} line={step.lineNumber} />}
+      {step.event === 'line' && step.calc && <CalcPanel calc={step.calc} line={step.lineNumber} />}
       {step.event === 'return' && step.returnValue && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
@@ -164,12 +163,14 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
           keys={cellKeys[s.name] ?? []}
           prevItems={s.prevItems}
           pointers={pointersByList[i]}
-          compared={cellsOf(s.name)}
+          compared={cellsOf(marks, s.name)}
           wholeCompared={marks.vars.has(s.name)}
+          written={cellsOf(writes, s.name)}
+          wholeWritten={writes.vars.has(s.name)}
         />
       ))}
       {grids.map(([name, v]) => (
-        <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} compared={gridCellsOf(name)} />
+        <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} compared={gridCellsOf(marks, name)} written={gridCellsOf(writes, name)} />
       ))}
       {dicts.map(([name, v]) => (
         <DictView
@@ -184,7 +185,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap }: Props) {
       {sets.map(([name, v]) => (
         <SetView key={name} name={name} value={v as SequenceValue} prev={prevVars?.[name]} compared={marks.vars.has(name)} />
       ))}
-      <ScalarGrid entries={scalars} prevVars={prevVars} pointerColors={pointerColors} compared={marks.vars} />
+      <ScalarGrid entries={scalars} prevVars={prevVars} pointerColors={pointerColors} compared={marks.vars} written={writes.vars} />
 
       {entries.length === 0 && step.event === 'line' && <p className="text-sm text-ink-400">{t('noLocals')}</p>}
     </div>

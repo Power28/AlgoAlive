@@ -231,6 +231,36 @@ def tracer_cases():
         if not cond or cond["result"] is not None:
             return "a condition with stack.pop() must not be evaluated ahead of time"
 
+    def first_calc(code, call, line):
+        r = run(code, call)
+        return r, next((s["calc"] for s in r["steps"] if s.get("calc") and s["lineNumber"] == line), None)
+
+    def calc_stages():
+        code = "def f(lo, hi):\n    mid = (lo + hi) // 2\n    return mid\n"
+        _, calc = first_calc(code, "f(0, 7)", 2)
+        if not calc or calc["stages"] != ["(0 + 7) // 2", "7 // 2", "3"] or calc.get("targetLoc") != {"var": "mid"}:
+            return f"expected (0 + 7) // 2 → 7 // 2 → 3 into mid, got {calc and (calc['stages'], calc.get('targetLoc'))}"
+
+    def calc_augmented():
+        _, calc = first_calc("def f(left):\n    left += 1\n    return left\n", "f(0)", 2)
+        if not calc or calc["kind"] != "aug" or calc["stages"] != ["0 + 1", "1"]:
+            return f"expected left += 1 as 0 + 1 → 1, got {calc and (calc['kind'], calc['stages'])}"
+
+    def calc_cell_read_write():
+        code = "def f(dp, i):\n    dp[i] = dp[i - 1] + dp[i - 2]\n    return dp\n"
+        _, calc = first_calc(code, "f([1, 2, 0], 2)", 2)
+        reads = [t.get("loc") for t in (calc or {}).get("terms", [])]
+        if not calc or calc.get("targetLoc") != {"var": "dp", "index": 2} or reads != [{"var": "dp", "index": 1}, {"var": "dp", "index": 0}]:
+            return f"dp[2] should be written from dp[1] and dp[0], got {calc and (calc.get('targetLoc'), reads)}"
+
+    def calc_skips_user_calls():
+        code = "def helper(x):\n    return x * 2\n\ndef f(y):\n    z = helper(y) + 1\n    return z\n"
+        r, calc = first_calc(code, "f(3)", 5)
+        if calc is not None:
+            return "an expression calling a user function must not be evaluated ahead of time"
+        if fmt(r["returnValue"]) != "7":
+            return f"program result changed: {fmt(r['returnValue'])}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -242,6 +272,10 @@ def tracer_cases():
         ("condition values are substituted", condition_values),
         ("and / or short-circuit is recorded", condition_short_circuit),
         ("conditions with side effects are not evaluated", condition_side_effects_not_evaluated),
+        ("arithmetic is reduced step by step", calc_stages),
+        ("augmented assignment is shown as a calculation", calc_augmented),
+        ("calculation reads / writes list cells", calc_cell_read_write),
+        ("calculations calling user functions are skipped", calc_skips_user_calls),
     ]
 
 

@@ -47,7 +47,8 @@ body {
 /* 條件式代入數值後的結果（行尾提示） */
 .aa-hint-true,
 .aa-hint-false,
-.aa-hint-unknown {
+.aa-hint-unknown,
+.aa-hint-calc {
   font-style: italic;
   opacity: 0.9;
 }
@@ -60,6 +61,9 @@ body {
 }
 .aa-hint-unknown {
   color: var(--color-ink-400) !important;
+}
+.aa-hint-calc {
+  color: #22d3ee !important;
 }
 
 .aa-glyph-current::before {

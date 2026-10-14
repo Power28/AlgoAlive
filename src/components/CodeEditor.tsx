@@ -14,8 +14,8 @@ interface Props {
   /** 上一步執行過的行 */
   prevLine?: number;
   errorLine?: number | null;
-  /** 目前行若是條件式，在行尾顯示代入數值後的結果，例如 "0 < 6 → True" */
-  hint?: { text: string; result: boolean | null };
+  /** 目前行的行尾提示：條件式 "0 < 6 → True"、計算 "(0 + 7) // 2 → 3" */
+  hint?: { text: string; tone: 'true' | 'false' | 'unknown' | 'calc' };
   onRun: () => void;
 }
 
@@ -71,7 +71,7 @@ export function CodeEditor({ path, value, onChange, currentLine, prevLine, error
           showIfCollapsed: true,
           after: {
             content: `    ${hint.text}`,
-            inlineClassName: hint.result === true ? 'aa-hint-true' : hint.result === false ? 'aa-hint-false' : 'aa-hint-unknown',
+            inlineClassName: `aa-hint-${hint.tone}`,
           },
         },
       });
@@ -81,7 +81,7 @@ export function CodeEditor({ path, value, onChange, currentLine, prevLine, error
     if (focus) editor.revealLineInCenterIfOutsideViewport(focus);
   };
 
-  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine, hint?.text, hint?.result]);
+  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine, hint?.text, hint?.tone]);
 
   return (
     <Editor

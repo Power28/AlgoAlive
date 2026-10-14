@@ -7,7 +7,7 @@ import { runner } from '../runtime/runner';
 import type { Example, Tutorial } from '../tutorials';
 import type { TraceResult } from '../types';
 import { Visualizer } from './Visualizer';
-import { conditionHint } from './ConditionPanel';
+import { lineHint } from './ConditionPanel';
 
 /** 範例的 trace 只算一次；同一個範例重複開啟時直接沿用 */
 const traceCache = new Map<string, Promise<TraceResult>>();
@@ -82,7 +82,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
-  const hint = step?.event === 'line' && step.condition ? conditionHint(step.condition) : null;
+  const hint = lineHint(step);
 
   return (
     <div ref={rootRef} className="@container mt-5 overflow-hidden rounded-xl border border-ink-700 bg-ink-900" data-demo={example.id}>
@@ -132,7 +132,9 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
                 <span className="pr-3 whitespace-pre text-ink-300">
                   {line || ' '}
                   {current && hint && (
-                    <span className={`ml-4 italic ${hint.result === true ? 'text-ok' : hint.result === false ? 'text-err' : 'text-ink-400'}`}>
+                    <span
+                      className={`ml-4 italic ${hint.tone === 'true' ? 'text-ok' : hint.tone === 'false' ? 'text-err' : hint.tone === 'calc' ? 'text-[#22d3ee]' : 'text-ink-400'}`}
+                    >
                       {hint.text}
                     </span>
                   )}

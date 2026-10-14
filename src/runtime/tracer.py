@@ -4,6 +4,7 @@
 只追蹤 filename == USER_FILE 的 frame，因此 typing / collections 等內部呼叫不會被記錄。
 """
 import ast
+import copy
 import io
 import json
 import math
@@ -243,6 +244,10 @@ _CMP_OPS = {
     ast.In: ("in", lambda a, b: a in b), ast.NotIn: ("not in", lambda a, b: a not in b),
 }
 _MAX_DISPLAY = 14
+_MAX_STAGES = 6
+# 這些函式出現在賦值右邊時也算「計算」（例如 n = len(nums)、best = max(best, area)）
+_CALC_CALLS = {"len", "abs", "min", "max", "sum", "round", "int", "float"}
+_LEAF_NODES = (ast.Name, ast.Subscript, ast.Attribute)
 
 
 class _Unknown(Exception):
@@ -265,17 +270,22 @@ class _CondAnalyzer:
         self.code = code
         self.registry = registry
         self.by_line = {}
+        self.calc_by_line = {}
         self.compiled = {}
         try:
             tree = ast.parse(code)
         except SyntaxError:
             return
         for node in ast.walk(tree):
-            if not isinstance(node, ast.stmt) or node.lineno in self.by_line:
+            if not isinstance(node, ast.stmt) or node.lineno in self.by_line or node.lineno in self.calc_by_line:
                 continue
             expr = self._condition_of(node)
             if expr is not None:
                 self.by_line[node.lineno] = expr
+                continue
+            calc = self._calc_of(node)
+            if calc is not None:
+                self.calc_by_line[node.lineno] = calc
 
     @staticmethod
     def _condition_of(stmt):
@@ -287,6 +297,32 @@ class _CondAnalyzer:
                 return value.test
             if isinstance(value, (ast.Compare, ast.BoolOp)) or (isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not)):
                 return value
+        return None
+
+    @staticmethod
+    def _has_arith(node):
+        for n in ast.walk(node):
+            if isinstance(n, ast.BinOp):
+                return True
+            if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.USub, ast.Invert)) and not isinstance(n.operand, ast.Constant):
+                return True
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _CALC_CALLS:
+                return True
+        return False
+
+    def _calc_of(self, stmt):
+        """回傳 (種類, 寫入目標或 None, 要逐步計算的運算式, 敘述原文)；不是算術就回傳 None"""
+        if isinstance(stmt, ast.AugAssign):
+            # left += 1 → 計算 left + 1
+            target_load = ast.parse(self._src(stmt.target), mode="eval").body
+            expr = ast.fix_missing_locations(ast.copy_location(ast.BinOp(left=target_load, op=stmt.op, right=stmt.value), stmt.value))
+            return ("aug", stmt.target, expr, self._src(stmt))
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and self._has_arith(stmt.value):
+            return ("assign", stmt.targets[0], stmt.value, self._src(stmt))
+        if isinstance(stmt, ast.AnnAssign) and stmt.value is not None and self._has_arith(stmt.value):
+            return ("assign", stmt.target, stmt.value, self._src(stmt))
+        if isinstance(stmt, ast.Return) and stmt.value is not None and self._has_arith(stmt.value):
+            return ("return", None, stmt.value, self._src(stmt))
         return None
 
     def _src(self, node):
@@ -396,6 +432,122 @@ class _CondAnalyzer:
         parts.append({"kind": "truth", "src": src, "terms": [term], "display": term["display"], "result": result})
         return term["display"], result
 
+    @staticmethod
+    def _subst(node, repl):
+        """把 repl 中的子節點換成顯示用的名稱節點，回傳新的 AST（不改動原本的樹）"""
+        if id(node) in repl:
+            return ast.Name(id=repl[id(node)], ctx=ast.Load())
+        new = copy.copy(node)
+        for field, value in ast.iter_fields(node):
+            if isinstance(value, ast.AST):
+                setattr(new, field, _CondAnalyzer._subst(value, repl))
+            elif isinstance(value, list):
+                setattr(new, field, [_CondAnalyzer._subst(v, repl) if isinstance(v, ast.AST) else v for v in value])
+        return new
+
+    @staticmethod
+    def _render(node):
+        """運算式轉回文字；tuple 不加外層括號（a, b = 0, 6 的右邊）"""
+        text = ast.unparse(node)
+        if isinstance(node, ast.Tuple) and text.startswith("(") and text.endswith(")"):
+            text = text[1:-1]
+        return text
+
+    @staticmethod
+    def _result_short(value):
+        """計算結果的顯示：純量照 repr；短的容器也照 repr，長的只標長度"""
+        if isinstance(value, tuple):
+            return ", ".join(map(repr, value)) if len(repr(value)) <= 40 else f"({len(value)} items)"
+        if isinstance(value, (list, set, dict)):
+            r = repr(value)
+            return r if len(r) <= 40 else f"{type(value).__name__} of {len(value)}"
+        r = repr(value)
+        return r if len(r) <= 40 else r[:39] + "…"
+
+    def _calc(self, frame, ctx):
+        spec = self.calc_by_line.get(frame.f_lineno)
+        if spec is None:
+            return None
+        kind, target, expr, stmt_src = spec
+        if not _is_pure(expr):
+            return None
+
+        # 1) 葉節點：變數、索引、屬性（min / max 這類函式名稱本身不算）
+        leaves, terms, repl = [], [], {}
+
+        def collect(n):
+            if isinstance(n, _LEAF_NODES):
+                leaves.append(n)
+                return
+            for field, value in ast.iter_fields(n):
+                if isinstance(n, ast.Call) and field == "func":
+                    continue
+                for child in value if isinstance(value, list) else [value]:
+                    if isinstance(child, ast.AST):
+                        collect(child)
+
+        collect(expr)
+        for leaf in leaves:
+            term, _, known = self._term(leaf, frame, ctx)
+            if not known:
+                return None
+            terms.append(term)
+            if term["display"] != term["src"]:
+                repl[id(leaf)] = term["display"]
+
+        # 2) 由內而外算出每個運算
+        stages = [self._render(self._subst(expr, repl))]
+        composites = []
+
+        def post_order(n):
+            if isinstance(n, _LEAF_NODES) or isinstance(n, ast.Constant):
+                return
+            for child in ast.iter_child_nodes(n):
+                if isinstance(n, ast.Call) and child is n.func:
+                    continue
+                post_order(child)
+            if isinstance(n, (ast.BinOp, ast.UnaryOp, ast.Call)):
+                composites.append(n)
+
+        post_order(expr)
+        try:
+            for node in composites:
+                value = self._eval(node, frame)
+                repl[id(node)] = self._result_short(value)
+                stages.append(self._render(self._subst(expr, repl)))
+            result = self._eval(expr, frame)
+        except _Unknown:
+            return None
+
+        result_display = self._result_short(result)
+        stages.append(result_display)
+        # 去掉相鄰重複，太長時保留頭尾
+        dedup = [st for i, st in enumerate(stages) if i == 0 or st != stages[i - 1]]
+        if len(dedup) > _MAX_STAGES:
+            dedup = dedup[:2] + dedup[-(_MAX_STAGES - 2):]
+
+        calc = {
+            "kind": kind,
+            "src": stmt_src,
+            "expr": self._src(expr) if kind != "aug" else ast.unparse(expr),
+            "stages": dedup,
+            "result": _ser(result, ctx),
+            "resultDisplay": result_display,
+            "terms": terms,
+        }
+        if target is not None:
+            calc["target"] = self._src(target)
+            loc = self._locate(target, frame)
+            if loc:
+                calc["targetLoc"] = loc
+        return calc
+
+    def evaluate_calc(self, frame, ctx):
+        try:
+            return self._calc(frame, ctx)
+        except Exception:
+            return None
+
     def evaluate(self, frame, ctx):
         expr = self.by_line.get(frame.f_lineno)
         if expr is None:
@@ -488,6 +640,10 @@ def algoalive_run(code, call_src):
             cond = conditions.evaluate(frame, ctx)
             if cond:
                 step["condition"] = cond
+            else:
+                calc = conditions.evaluate_calc(frame, ctx)
+                if calc:
+                    step["calc"] = calc
         heap = ctx.drain()
         if heap:
             step["heap"] = heap

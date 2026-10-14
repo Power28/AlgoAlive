@@ -3,7 +3,7 @@ import type { PyValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
 import { useHeap } from '../lib/heapContext';
-import { compareOutline } from './ConditionPanel';
+import { markOutline } from '../lib/stepMarks';
 
 const MIN_CELL = 48;
 const MAX_CELL = 120;
@@ -27,9 +27,13 @@ interface Props {
   compared?: Set<number>;
   /** 整個序列正在被判斷（例如 while stack: 的 stack） */
   wholeCompared?: boolean;
+  /** 計算結果要寫入的格子（例如 dp[i]） */
+  written?: Set<number>;
+  /** 整個序列被重新賦值（例如 dp = [0] * n） */
+  wholeWritten?: boolean;
 }
 
-export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared }: Props) {
+export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten }: Props) {
   const heap = useHeap();
   const n = items.length;
   // 格子寬度依最長內容調整（例如 BFS 佇列中的座標 tuple），整列統一寬度才能對齊指針
@@ -68,7 +72,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
   const order = keys.join(',');
 
   return (
-    <section className="rounded-lg" style={compareOutline(!!wholeCompared)}>
+    <section className="rounded-lg" style={markOutline(!!wholeCompared, !!wholeWritten)}>
       <Header name={name} kind={kind} meta={`len ${n + (truncated ?? 0)}`} />
       <div className="scrollbar-thin overflow-x-auto pb-1">
         <div className="relative px-1 pt-1" style={{ width: Math.max(width, STEP) + 8 }}>
@@ -103,7 +107,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
                     fontSize: CELL > MIN_CELL ? 13 : text.length > 4 ? 11 : 15,
                     borderColor: accent ?? '#3e3e3e',
                     color: item.type === 'str' ? STR_COLOR : 'inherit',
-                    ...compareOutline(!!compared?.has(i)),
+                    ...markOutline(!!compared?.has(i), !!written?.has(i)),
                     // motion 元件不會清掉變成 undefined 的 style，必須明確給 'none'
                     boxShadow: accent ? `0 0 0 1px ${accent}55, 0 0 14px ${accent}33` : 'none',
                   }}

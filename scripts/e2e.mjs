@@ -215,11 +215,31 @@ async function testCondition(page) {
   for (let i = 0; i < 5 && !(await page.$('main [data-condition]')); i++) await page.click('[data-action="next"]');
   const text = await page.evaluate(() => document.querySelector('main [data-condition]')?.innerText ?? '');
   record('condition card shows substituted values', /left < right[\s\S]*0 < 6[\s\S]*True/.test(text) ? null : `got ${JSON.stringify(text)}`);
-  // Monaco 以不換行空白（ ）呈現空格，比對前先正規化
+  // Monaco 在下一個 animation frame 才重繪；並以不換行空白（ ）呈現空格，比對前先正規化
+  await page.waitForSelector('.monaco-editor .aa-hint-true', { timeout: 3000 }).catch(() => {});
   const hint = await page.$eval('.monaco-editor', (el) => el.querySelector('.aa-hint-true')?.textContent.replace(/\s+/g, ' ').trim() ?? null);
   record('editor shows the inline result', hint?.includes('0 < 6 → True') ? null : `got ${JSON.stringify(hint)}`);
   const outlined = await page.$$eval('main section:nth-child(2) [style*="dashed"]', (els) => els.length);
   record('compared variables are outlined', outlined >= 2 ? null : `found ${outlined} outlined elements`);
+}
+
+async function testCalc(page) {
+  console.log('Calculation');
+  // 預設頁籤 167 第 4 行：current_sum = numbers[left] + numbers[right] → 1 + 11 → 12
+  await page.click('[data-tab-example="lc167"]');
+  await sleep(300);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  const atCalc = () => page.evaluate(() => document.querySelector('main [data-calc]')?.innerText.includes('current_sum') ?? false);
+  for (let i = 0; i < 6 && !(await atCalc()); i++) await page.click('[data-action="next"]');
+  const text = await page.evaluate(() => document.querySelector('main [data-calc]')?.innerText ?? '');
+  record('calculation card reduces the expression', /1 \+ 11[\s\S]*12/.test(text) ? null : `got ${JSON.stringify(text)}`);
+  // Monaco 在下一個 animation frame 才重繪，等提示出現再讀
+  await page.waitForSelector('.monaco-editor .aa-hint-calc', { timeout: 3000 }).catch(() => {});
+  const hint = await page.$eval('.monaco-editor', (el) => el.querySelector('.aa-hint-calc')?.textContent.replace(/\s+/g, ' ').trim() ?? null);
+  record('editor shows the calculation result', hint?.includes('1 + 11 → 12') ? null : `got ${JSON.stringify(hint)}`);
+  const reads = await page.$$eval('main section:nth-child(2) [style*="dashed"]', (els) => els.length);
+  record('cells read by the calculation are outlined', reads >= 2 ? null : `found ${reads} outlined cells`);
 }
 
 async function testLanguage(page) {
@@ -251,6 +271,7 @@ try {
   await testTabs(page, server.url);
   await testLanguage(page);
   await testCondition(page);
+  await testCalc(page);
   await testDemo(page);
   await testExamples(page, expected);
 

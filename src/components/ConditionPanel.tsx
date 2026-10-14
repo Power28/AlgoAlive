@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Check, CircleHelp, X } from 'lucide-react';
-import type { Condition, ConditionPart, Heap } from '../types';
+import type { Condition, ConditionPart, ExecutionStep, Heap } from '../types';
 import { formatPy } from '../lib/pyValue';
 import { useT } from '../i18n';
 
@@ -109,40 +109,21 @@ export function ConditionPanel({ condition, heap, line }: { condition: Condition
   );
 }
 
-/** 程式碼行尾的提示文字，例如 "0 < 6 → True" */
-export function conditionHint(condition: Condition): { text: string; result: boolean | null } {
-  const display = condition.display.length > 60 ? `${condition.display.slice(0, 60)}…` : condition.display;
-  const suffix = condition.result === null ? '' : ` → ${condition.result ? 'True' : 'False'}`;
-  return { text: `${display}${suffix}`, result: condition.result };
-}
+/** 程式碼行尾的提示：條件式顯示代入後的真假，計算顯示化簡結果 */
+export type HintTone = 'true' | 'false' | 'unknown' | 'calc';
 
-/** 被比較的位置 → 用來在各視圖加上紫色虛線框 */
-export interface CompareMarks {
-  vars: Set<string>;
-  /** 序列的某格："name:index" */
-  cells: Set<string>;
-  /** grid 的某格："name:row:col" */
-  gridCells: Set<string>;
-  refs: Set<string>;
-}
-
-export function compareMarks(condition: Condition | undefined): CompareMarks {
-  const m: CompareMarks = { vars: new Set(), cells: new Set(), gridCells: new Set(), refs: new Set() };
-  for (const part of condition?.parts ?? []) {
-    if (part.skipped) continue;
-    for (const term of part.terms ?? []) {
-      const loc = term.loc;
-      if (!loc) continue;
-      if (loc.ref) m.refs.add(loc.ref);
-      else if (loc.var && loc.col !== undefined && loc.index !== undefined) m.gridCells.add(`${loc.var}:${loc.index}:${loc.col}`);
-      else if (loc.var && loc.index !== undefined) m.cells.add(`${loc.var}:${loc.index}`);
-      else if (loc.var) m.vars.add(loc.var);
-    }
+export function lineHint(step: ExecutionStep | undefined): { text: string; tone: HintTone } | undefined {
+  if (!step || step.event !== 'line') return undefined;
+  const clip = (s: string) => (s.length > 60 ? `${s.slice(0, 60)}…` : s);
+  if (step.condition) {
+    const c = step.condition;
+    const tone: HintTone = c.result === true ? 'true' : c.result === false ? 'false' : 'unknown';
+    return { text: `${clip(c.display)}${c.result === null ? '' : ` → ${c.result ? 'True' : 'False'}`}`, tone };
   }
-  return m;
+  if (step.calc) {
+    const { stages } = step.calc;
+    const text = stages.length > 1 ? `${clip(stages[0])} → ${clip(stages[stages.length - 1])}` : `= ${clip(stages[0])}`;
+    return { text, tone: 'calc' };
+  }
+  return undefined;
 }
-
-export const COMPARE_COLOR = '#c084fc';
-/** 被比較的元素外框（motion 元件不會清掉 undefined 的 style，所以未選取時明確給 none） */
-export const compareOutline = (on: boolean) =>
-  on ? { outline: `2px dashed ${COMPARE_COLOR}`, outlineOffset: 3 } : { outline: 'none', outlineOffset: 0 };

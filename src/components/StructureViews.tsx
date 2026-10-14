@@ -2,7 +2,7 @@ import { LayoutGroup, motion } from 'framer-motion';
 import type { Heap } from '../types';
 import { formatCell, formatPy, nodeKind, refTarget, valueKey } from '../lib/pyValue';
 import { useT } from '../i18n';
-import { compareOutline } from './ConditionPanel';
+import { markOutline } from '../lib/stepMarks';
 import { Header } from './ArrayView';
 
 /** 指向某節點的變數標籤 */
@@ -131,7 +131,7 @@ export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Prop
                       <div
                         title={formatPy(val ?? { type: 'none' }, heap)}
                         className="flex h-11 min-w-11 items-center justify-center rounded-lg border-2 px-2 font-mono text-[15px] font-semibold transition-colors duration-300"
-                        style={{ ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id)), ...compareOutline(!!compared?.has(id)) }}
+                        style={{ ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id)), ...markOutline(!!compared?.has(id)) }}
                       >
                         {val ? formatCell(val, heap) : '·'}
                       </div>
@@ -287,7 +287,7 @@ export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
                 <div
                   title={formatPy(val ?? { type: 'none' }, heap)}
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"
-                  style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)), ...compareOutline(!!compared?.has(p.id)) }}
+                  style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)), ...markOutline(!!compared?.has(p.id)) }}
                 >
                   {val ? formatCell(val, heap) : '·'}
                 </div>
