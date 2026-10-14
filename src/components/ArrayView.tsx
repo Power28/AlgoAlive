@@ -48,6 +48,9 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
   for (const p of pointers) if (!colorAt.has(p.index)) colorAt.set(p.index, p.color);
 
   const width = (n + (hasOverflowSlot ? 1 : 0)) * STEP;
+  // 只在格子順序改變（swap / insert / pop）時才做 layout 動畫；
+  // 上方插入 return 橫幅等造成整塊位移時，不應讓格子看起來在「移動」
+  const order = keys.join(',');
 
   return (
     <section>
@@ -75,6 +78,7 @@ export function ArrayView({ name, value, keys, prev, pointers }: Props) {
                 <motion.div
                   key={keys[i] ?? i}
                   layout
+                  layoutDependency={order}
                   transition={spring}
                   title={text}
                   className="flex shrink-0 items-center justify-center rounded-md border font-mono font-semibold"

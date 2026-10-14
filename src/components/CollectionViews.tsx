@@ -16,6 +16,7 @@ interface DictProps {
 export function DictView({ name, value, prev, lookups }: DictProps) {
   const prevMap = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [valueKey(k), valueKey(v)]) : []);
   const hasPrev = prev?.type === 'dict';
+  const order = value.entries.map(([k]) => valueKey(k)).join('|');
 
   // 每一列都是獨立的 grid（才能各自做 layout 動畫），因此欄寬要統一算好
   const keyCh = Math.min(40, Math.max(4, ...value.entries.map(([k]) => formatPy(k).length + (lookups.has(valueKey(k)) ? 14 : 0))));
@@ -41,6 +42,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
               <motion.div
                 key={kk}
                 layout
+                layoutDependency={order}
                 {...enter}
                 transition={{ duration: 0.25 }}
                 className="grid border-t border-ink-600 font-mono text-sm"
@@ -74,6 +76,7 @@ export function DictView({ name, value, prev, lookups }: DictProps) {
 export function SetView({ name, value, prev }: { name: string; value: SequenceValue; prev?: PyValue }) {
   const prevKeys = new Set(prev?.type === 'set' ? prev.items.map(valueKey) : []);
   const hasPrev = prev?.type === 'set';
+  const order = value.items.map(valueKey).join('|');
   return (
     <section>
       <Header name={name} kind="set" meta={`size ${value.items.length + (value.truncated ?? 0)}`} />
@@ -87,6 +90,7 @@ export function SetView({ name, value, prev }: { name: string; value: SequenceVa
               <motion.span
                 key={k}
                 layout
+                layoutDependency={order}
                 initial={{ opacity: 0, scale: 0.6 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.6 }}
