@@ -2,6 +2,8 @@
 
 > *Bring your LeetCode algorithms to life*
 
+**🔗 線上 Demo：https://power28.github.io/AlgoAlive/**
+
 AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器。貼上一般的 Python 函式與測試呼叫，按下 **Visualize**，就能一步步看到 list 方格、指針移動、dict 查表與變數變化——不用手動加任何 `print`。
 
 全部在瀏覽器內執行（Pyodide / WebAssembly），純靜態網頁即可部署，不需後端。
@@ -27,6 +29,8 @@ npm run dev
 ```bash
 npm run build   # 輸出至 dist/，可直接部署到 GitHub Pages / Netlify / Vercel
 ```
+
+push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置並部署到 GitHub Pages。
 
 ## 架構
 
