@@ -23,6 +23,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 - **一般圖**：自訂節點（`Node.neighbors`）或名為 `graph` / `adj` 的鄰接串列（`dict` 或 `list[list]`，可帶權重 `(v, w)`）畫成節點連線圖；`node` / `nxt` 等變數標在節點上並高亮目前走的邊，`visited` 填色、`queue` / `stack` 中的節點虛線框、`path` 的邊高亮，`indegree` / `dist` 等每個節點一個值的陣列顯示成旁邊的小標籤，`color` 陣列直接替節點著色
 - **絲滑交換動畫**：前端追蹤每個格子的「身分」，swap / sort 時格子會真的移動（framer-motion `layout`）
 - **break / continue**：執行到 `break` / `continue` 時，卡片說明跳出（或跳過這一圈剩下的部分）的是哪一個迴圈、接著會執行第幾行；巢狀迴圈只標最內層，「迴圈」列對應的那一圈也加上紅色「跳出」/ 黃色「跳過」標籤
+- **內建函式**：執行到含有 `sum` / `min` / `max` / `sorted` / `.sort()` / `reversed` / `any` / `all` / `enumerate` / `zip` / `set` / `Counter` / `"".join` 的那一行時，「內建函式」卡片以唯讀方式事先算出它怎麼處理每個元素：`sum` 逐一累加、`min` / `max` 逐一比較並以皇冠標出勝出者（支援 `key=`）、排序時格子先照原本順序排開再滑到排序後的位置、`any` / `all` 逐一標 ✓ / ✗ 並停在短路的位置、`zip` 把相同位置配成一組並標出被捨棄的多餘元素、`set` 劃掉重複值、`Counter` 列出次數；`any(x > 3 for x in nums)` 這類產生器運算式也會逐元素說明。迭代器只能走訪一次，用到迭代器的運算式不會預先求值；`and` / `or` 後面、三元運算式分支中的呼叫不一定會執行，也不預先說明
 - **try / except 流程**：例外發生時，「例外」卡片列出型別與訊息、由內往外經過的每個 try 依序比對 except（✓ / ✗）、要先經過的 finally，以及最後的去向：被第幾行的 except 接住、離開函式丟回呼叫者的哪一行，或沒人接住而中止；執行到 `except` 那一行時說明「ValueError 符合 except ValueError 嗎？」，編輯器行尾也標 ✓ / ✗；`try:`、`else`、`finally` 的第一行各自說明為什麼會走到這裡（finally 之後例外會不會繼續往外拋）
 - **同時賦值 / 交換**：`a, b = b, a`、`nums[i], nums[j] = nums[j], nums[i]`、`prev, curr = curr, nxt` 等寫法顯示「① 先把右邊每一個值都算好 → ② 再同時寫到左邊」，左右互換時標示「交換」並說明為什麼不需要暫存變數；讀取與寫入的位置分別加框
 - **推導式**：`[x * x for x in nums if x > 1]`（以及 set / dict 推導式）在迴圈列顯示第幾圈、在序列上標出迭代變數，「推導式」卡片顯示這一圈的元素、條件是否通過、算出的值，結果清單一格一格長出來
@@ -64,7 +65,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 | 堆疊、佇列與堆積 | 堆疊（20、150）· 佇列與雙端佇列（1700、239）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347、1046） |
 | 圖與網格 | 圖的走訪（133、797、785）· Dijkstra 最短路徑（743）· 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
 | 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
-| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191）· 例外處理（468、65） |
+| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191）· 例外處理（468、65）· 內建函式（49、896、1984） |
 
 
 教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
@@ -120,7 +121,7 @@ src/
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  ├─ graph.ts             # 物件圖 / 鄰接串列 → 節點與邊，以及 visited、queue、path 等走訪狀態
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ tutorials/              # 雙語演算法教學與範例題（31 個主題、60 題）
+├─ tutorials/              # 雙語演算法教學與範例題（32 個主題、63 題）
 ├─ components/             # CodeEditor / ArrayView / GridView / StructureViews / GraphView / CollectionViews / Visualizer
 │                          # Controls / TabBar / Library / TutorialView
 ├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）

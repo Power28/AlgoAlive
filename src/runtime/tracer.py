@@ -4,6 +4,7 @@
 只追蹤 filename == USER_FILE 的 frame，因此 typing / collections 等內部呼叫不會被記錄。
 """
 import ast
+import builtins
 import copy
 import io
 import json
@@ -12,6 +13,7 @@ import operator
 import sys
 import types
 import collections
+import collections.abc
 
 MAX_STEPS = 500
 MAX_ITEMS = 100      # 單一容器最多序列化的元素數
@@ -240,7 +242,7 @@ COND_FILE = "<condition>"
 # 求值時可以呼叫的函式：都不會修改資料
 _PURE_CALLS = {
     "len", "abs", "min", "max", "sum", "int", "float", "str", "bool", "ord", "chr",
-    "sorted", "tuple", "list", "set", "isinstance", "round", "any", "all",
+    "sorted", "tuple", "list", "set", "isinstance", "round", "any", "all", "range",
 }
 _UNSAFE_NODES = (
     ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom, ast.Lambda,
@@ -288,6 +290,7 @@ class _CondAnalyzer:
         self.slices_by_line = {}
         self.comp_by_line = {}
         self.compiled = {}
+        self.names = {}  # 運算式 → 用到的變數名稱
         self.tree = None
         try:
             tree = ast.parse(code)
@@ -360,8 +363,15 @@ class _CondAnalyzer:
         key = id(node)
         if key not in self.compiled:
             self.compiled[key] = compile(ast.Expression(node), COND_FILE, "eval")
+            self.names[key] = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+        local = frame.f_locals
+        for name in self.names[key]:
+            # 迭代器 / 產生器只能走訪一次：預先求值（例如 sum(it)）會把它用掉
+            value = local[name] if name in local else frame.f_globals.get(name)
+            if isinstance(value, collections.abc.Iterator):
+                raise _Unknown()
         try:
-            return eval(self.compiled[key], frame.f_globals, dict(frame.f_locals))
+            return eval(self.compiled[key], frame.f_globals, dict(local))
         except Exception as exc:  # 例如 stack 為空時的 stack[-1]
             raise _Unknown() from exc
 
@@ -996,6 +1006,354 @@ _SIZED_CALLS = {"range", "enumerate", "reversed", "zip"}
 _DICT_VIEWS = {"items", "keys", "values"}
 
 
+# ─────────────── 內建函式（sum / min / max / sorted…） ───────────────
+
+_BUILTIN_FUNCS = {"sum", "min", "max", "sorted", "any", "all", "reversed", "enumerate", "zip", "set", "Counter"}
+_MAX_BUILTIN_ITEMS = 16
+_ITERABLE_TYPES = (list, tuple, str, set, frozenset, dict, range, collections.deque,
+                   type({}.keys()), type({}.values()), type({}.items()))
+
+
+def _bdisp(value):
+    """內建函式卡片上單一元素的顯示"""
+    if isinstance(value, (list, tuple, set)):
+        r = repr(value)
+        if len(r) <= 24:
+            return r
+    return _short_value(value, None)
+
+
+def _uses_iterator(node, frame, skip=()):
+    """運算式用到的變數中有迭代器 / 產生器（預先求值會把它用掉）"""
+    for n in ast.walk(node):
+        if isinstance(n, ast.Name) and n.id not in skip:
+            value = frame.f_locals[n.id] if n.id in frame.f_locals else frame.f_globals.get(n.id)
+            if isinstance(value, collections.abc.Iterator):
+                return True
+    return False
+
+
+class _BuiltinAnalyzer:
+    """執行到含有 sum / min / max / sorted / any / all / enumerate / zip… 的那一行時（尚未執行），
+    以唯讀方式算出內建函式如何處理每個元素：累加過程、勝出的元素、排序前後的位置、短路停在哪裡…"""
+
+    def __init__(self, analyzer):
+        self.an = analyzer
+        self.by_line = {}
+        self.compiled = {}
+        if analyzer.tree is None:
+            return
+        for node in ast.walk(analyzer.tree):
+            if isinstance(node, ast.stmt) and node.lineno not in self.by_line:
+                calls = self._calls_of(node)
+                if calls:
+                    self.by_line[node.lineno] = calls
+
+    @staticmethod
+    def _header_exprs(stmt):
+        """這個敘述「在這一行」會求值的運算式（複合敘述只看 header）"""
+        if isinstance(stmt, (ast.For, ast.AsyncFor)):
+            return [stmt.iter]
+        if isinstance(stmt, (ast.While, ast.If)):
+            return [stmt.test]
+        if isinstance(stmt, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Return, ast.Expr)):
+            return [stmt.value] if stmt.value is not None else []
+        return []
+
+    def _calls_of(self, stmt):
+        found = []
+
+        def visit(node):
+            if isinstance(node, ast.Lambda):
+                return
+            # and / or 後面的部分、a if c else b 的兩個分支不一定會執行：不預先說明
+            if isinstance(node, ast.BoolOp):
+                visit(node.values[0])
+                return
+            if isinstance(node, ast.IfExp):
+                visit(node.test)
+                return
+            for child in ast.iter_child_nodes(node):
+                visit(child)
+            if isinstance(node, ast.Call) and self._kind(node):
+                found.append(node)  # 後序：內層的呼叫先求值，排在前面
+
+        for expr in self._header_exprs(stmt):
+            visit(expr)
+        return found[:2]
+
+    @staticmethod
+    def _kind(call):
+        func = call.func
+        if isinstance(func, ast.Name) and func.id in _BUILTIN_FUNCS and call.args:
+            # min(a, b) / max(a, b) 由計算卡片說明；這裡只處理對整個序列取最小 / 最大
+            if func.id in ("min", "max") and len(call.args) != 1:
+                return None
+            return func.id
+        if isinstance(func, ast.Attribute):
+            if func.attr == "Counter" and isinstance(func.value, ast.Name) and func.value.id == "collections" and call.args:
+                return "Counter"
+            if func.attr == "sort" and isinstance(func.value, ast.Name) and not call.args:
+                return "sort"
+            if func.attr == "join" and len(call.args) == 1 and isinstance(func.value, (ast.Constant, ast.Name)):
+                return "join"
+        return None
+
+    def evaluate(self, frame, first_pass):
+        specs = self.by_line.get(frame.f_lineno)
+        if not specs:
+            return None
+        stmt_is_loop = first_pass is not None
+        if stmt_is_loop and not first_pass:
+            return None  # for 迴圈的 header 每一圈都會經過，只在第一次說明
+        out = []
+        for call in specs:
+            try:
+                info = self._evaluate(call, frame)
+            except Exception:  # noqa: BLE001 — 無法安全求值就不顯示
+                info = None
+            if info:
+                out.append(info)
+        return out or None
+
+    def _resolve(self, name, frame):
+        if name in frame.f_locals:
+            return frame.f_locals[name]
+        if name in frame.f_globals:
+            return frame.f_globals[name]
+        return getattr(builtins, name, None)
+
+    def _iterable(self, node, frame):
+        if isinstance(node, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+            return [v for _, v in self._comp_values(node, frame)]
+        value = self.an._eval(node, frame)
+        if not isinstance(value, _ITERABLE_TYPES):
+            raise _Unknown()  # 迭代器 / 產生器：事先走訪會把它用掉
+        return list(value)
+
+    def _fresh_iterable(self, node, frame):
+        """序列；或是 zip / enumerate / reversed 包住序列時，由這裡新建的迭代器（走訪它不會動到使用者的資料）"""
+        name = node.func.id if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) else None
+        if name in ("zip", "enumerate", "reversed") and not node.keywords and self._resolve(name, frame) is getattr(builtins, name):
+            args = [self.an._eval(a, frame) for a in node.args]
+            # enumerate(seq, start) 的第二個參數是起始編號，其餘參數都必須是序列
+            seqs = args[:1] if name == "enumerate" and len(args) == 2 and isinstance(args[1], int) else args
+            if not seqs or not all(isinstance(a, _ITERABLE_TYPES) for a in seqs):
+                raise _Unknown()
+            return list(getattr(builtins, name)(*args))
+        value = self.an._eval(node, frame)
+        if not isinstance(value, _ITERABLE_TYPES):
+            raise _Unknown()  # 迭代器 / 產生器：事先走訪會把它用掉
+        return value
+
+    @staticmethod
+    def _bind(target, value, scope):
+        if isinstance(target, ast.Name):
+            scope[target.id] = value
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            values = list(value)
+            if len(values) != len(target.elts):
+                raise _Unknown()
+            for t, v in zip(target.elts, values):
+                _BuiltinAnalyzer._bind(t, v, scope)
+        else:
+            raise _Unknown()
+
+    def _comp_values(self, node, frame):
+        """(x for x in nums if …)：只有一層 for、各部分都沒有副作用時，自己逐一求值（產生器，可以中途停下）"""
+        if len(node.generators) != 1:
+            raise _Unknown()
+        gen = node.generators[0]
+        if gen.is_async or not _is_pure(node.elt) or not all(_is_pure(c) for c in gen.ifs):
+            raise _Unknown()
+        bound = {n.id for n in ast.walk(gen.target) if isinstance(n, ast.Name)}
+        if any(_uses_iterator(part, frame, bound) for part in (node.elt, *gen.ifs)):
+            raise _Unknown()
+        source = self._fresh_iterable(gen.iter, frame)
+        parts = [node.elt, *gen.ifs]
+        for part in parts:
+            if id(part) not in self.compiled:
+                self.compiled[id(part)] = compile(ast.Expression(part), COND_FILE, "eval")
+        base = dict(frame.f_locals)
+
+        def run():
+            for item in list(source):
+                scope = dict(base)
+                self._bind(gen.target, item, scope)
+                if all(eval(self.compiled[id(c)], frame.f_globals, scope) for c in gen.ifs):
+                    yield item, eval(self.compiled[id(node.elt)], frame.f_globals, scope)
+
+        return run()
+
+    def _key_func(self, call, frame):
+        for kw in call.keywords:
+            if kw.arg != "key":
+                continue
+            node = kw.value
+            if isinstance(node, ast.Lambda):
+                params = {a.arg for a in node.args.args}
+                if not _is_pure(node.body) or _uses_iterator(node.body, frame, params):
+                    raise _Unknown()
+                k = id(node)
+                if k not in self.compiled:
+                    self.compiled[k] = compile(ast.Expression(node), COND_FILE, "eval")
+                return eval(self.compiled[k], frame.f_globals, dict(frame.f_locals))
+            if isinstance(node, (ast.Name, ast.Attribute)) and _is_pure(node):
+                func = self.an._eval(node, frame)
+                if func in (len, abs, str, int, float, ord) or getattr(func, "__qualname__", "") in ("str.lower", "str.upper"):
+                    return func
+            raise _Unknown()
+        return None
+
+    def _kwarg(self, call, name, frame, default=None):
+        for kw in call.keywords:
+            if kw.arg == name:
+                return self.an._eval(kw.value, frame)
+        return default
+
+    def _evaluate(self, call, frame):
+        kind = self._kind(call)
+        src = self.an._src(call)
+        if kind in ("sort", "join"):
+            target = call.func.value
+        else:
+            name = call.func.attr if isinstance(call.func, ast.Attribute) else call.func.id
+            expected = collections.Counter if kind == "Counter" else getattr(builtins, name)
+            if not isinstance(call.func, ast.Attribute) and self._resolve(name, frame) is not expected:
+                return None  # 被使用者自己的同名函式 / 變數蓋掉
+        info = {"func": kind, "src": src}
+
+        def items_info(values):
+            info["items"] = [_bdisp(v) for v in values[:_MAX_BUILTIN_ITEMS]]
+            if len(values) > _MAX_BUILTIN_ITEMS:
+                info["more"] = len(values) - _MAX_BUILTIN_ITEMS
+
+        if kind == "sum":
+            values = self._iterable(call.args[0], frame)
+            total = self.an._eval(call.args[1], frame) if len(call.args) > 1 else self._kwarg(call, "start", frame, 0)
+            running = []
+            for v in values:
+                total = total + v
+                running.append(_bdisp(total))
+            items_info(values)
+            info["running"] = running[:_MAX_BUILTIN_ITEMS]
+            info["result"] = _bdisp(total)
+            return info
+
+        if kind in ("min", "max"):
+            values = self._iterable(call.args[0], frame)
+            if not values:
+                return None
+            key = self._key_func(call, frame)
+            keys = [key(v) for v in values] if key else values
+            pick = 0
+            for i, k in enumerate(keys):
+                if (k < keys[pick]) if kind == "min" else (k > keys[pick]):
+                    pick = i
+            items_info(values)
+            if key:
+                info["keys"] = [_bdisp(k) for k in keys[:_MAX_BUILTIN_ITEMS]]
+            info["pick"] = pick
+            info["result"] = _bdisp(values[pick])
+            return info
+
+        if kind in ("sorted", "sort", "reversed"):
+            if kind == "sort":
+                values = self.an._eval(target, frame)
+                if not isinstance(values, list):
+                    return None
+                values = list(values)
+                info["target"] = target.id
+            else:
+                values = self._iterable(call.args[0], frame)
+            reverse = bool(self._kwarg(call, "reverse", frame, False)) if kind != "reversed" else False
+            if kind == "reversed":
+                order = list(range(len(values)))[::-1]
+            else:
+                key = self._key_func(call, frame)
+                keys = [key(v) for v in values] if key else values
+                order = sorted(range(len(values)), key=lambda i: keys[i], reverse=reverse)
+                if key:
+                    info["keys"] = [_bdisp(k) for k in keys[:_MAX_BUILTIN_ITEMS]]
+            items_info(values)
+            if reverse:
+                info["reverse"] = True
+            if len(values) <= _MAX_BUILTIN_ITEMS:
+                info["order"] = order
+            info["result"] = _bdisp([values[i] for i in order])
+            return info
+
+        if kind in ("any", "all"):
+            arg = call.args[0]
+            if isinstance(arg, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+                # any(x > 4 for x in nums)：格子顯示被走訪的 x，✓ / ✗ 是 x > 4 的結果
+                pairs = self._comp_values(arg, frame)
+                info["elt"] = self.an._src(arg.elt)
+                info["var"] = self.an._src(arg.generators[0].target)
+            else:
+                pairs = ((v, v) for v in self._iterable(arg, frame))
+            values = []
+            truth = []
+            stop = None
+            for i, (item, v) in enumerate(pairs):
+                values.append(item)
+                truth.append(bool(v))
+                if bool(v) == (kind == "any"):
+                    stop = i
+                    break  # 短路：後面的元素不會被看
+            items_info(values)
+            info["truth"] = truth[:_MAX_BUILTIN_ITEMS]
+            if stop is not None:
+                info["stop"] = stop
+            info["result"] = repr(stop is not None if kind == "any" else stop is None)
+            return info
+
+        if kind == "enumerate":
+            values = self._iterable(call.args[0], frame)
+            start = self.an._eval(call.args[1], frame) if len(call.args) > 1 else self._kwarg(call, "start", frame, 0)
+            items_info(values)
+            info["start"] = start
+            return info
+
+        if kind == "zip":
+            columns = [self._iterable(a, frame) for a in call.args]
+            n = min(len(c) for c in columns)
+            info["names"] = [self.an._src(a) for a in call.args]
+            info["columns"] = [[_bdisp(v) for v in c[:_MAX_BUILTIN_ITEMS]] for c in columns]
+            info["count"] = n
+            return info
+
+        if kind == "set":
+            values = self._iterable(call.args[0], frame)
+            seen = set()
+            kept = []
+            for v in values:
+                kept.append(v not in seen)
+                seen.add(v)
+            items_info(values)
+            info["kept"] = kept[:_MAX_BUILTIN_ITEMS]
+            info["result"] = _bdisp(set(values))
+            return info
+
+        if kind == "Counter":
+            values = self._iterable(call.args[0], frame)
+            counts = collections.Counter(values)
+            items_info(values)
+            info["counts"] = [[_bdisp(k), c] for k, c in list(counts.items())[:_MAX_BUILTIN_ITEMS]]
+            return info
+
+        if kind == "join":
+            sep = self.an._eval(target, frame)
+            values = self._iterable(call.args[0], frame)
+            if not isinstance(sep, str) or not all(isinstance(v, str) for v in values):
+                return None
+            items_info(values)
+            info["sep"] = repr(sep)
+            info["result"] = _bdisp(sep.join(values))
+            return info
+        return None
+
+
 def _short_value(value, ctx):
     """呼叫堆疊上參數的簡短顯示"""
     if value is None or isinstance(value, (bool, int, float)):
@@ -1353,6 +1711,7 @@ def algoalive_run(code, call_src):
     loops = _LoopTracker(conditions)
     operations = _OpAnalyzer(conditions)
     tries = _TryTracker(conditions)
+    builtin_calls = _BuiltinAnalyzer(conditions)
     comp_states = {}  # (id(frame), 行號) → 推導式進度
     entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
@@ -1397,6 +1756,13 @@ def algoalive_run(code, call_src):
             try_flow = tries.on_line(frame)
             if try_flow:
                 step["tryFlow"] = try_flow
+            # 產生器運算式 / lambda 自己的 frame 也在同一行：只在呼叫內建函式的那個 frame 說明
+            if frame.f_lineno in builtin_calls.by_line and not frame.f_code.co_name.startswith("<"):
+                # for 迴圈 header：只在第一圈說明 enumerate / zip / sorted 怎麼產生要走訪的序列
+                header = next((l for l in step.get("loops", []) if l["line"] == frame.f_lineno and l["kind"] == "for"), None)
+                calls = builtin_calls.evaluate(frame, None if header is None else header["iteration"] == 1)
+                if calls:
+                    step["builtins"] = calls
             slices = conditions.slices(frame, ctx)
             if slices:
                 step["slices"] = slices
@@ -1431,6 +1797,10 @@ def algoalive_run(code, call_src):
         # __init__ / __repr__ 這類特殊方法（例如 TrieNode() 建立節點）不算演算法步驟
         name = frame.f_code.co_name
         if event == "call" and name.startswith("__") and name.endswith("__"):
+            return None
+        # 產生器運算式 (x for x in …) 的內部：逐元素的過程由內建函式卡片說明（sum / any / all…），
+        # 不另外產生步驟；否則 all() 提早結束時關閉產生器的 GeneratorExit 也會被當成例外
+        if event == "call" and name == "<genexpr>":
             return None
         if event == "line":
             # 例外已被 try/except 接住，恢復正常；正在執行 finally（之後還會往外拋）時則否

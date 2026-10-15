@@ -476,6 +476,48 @@ def tracer_cases():
         if exc != ["uncaught"] or any(s["event"] == "return" for s in r["steps"]):
             return f"an exception leaving through finally is not a return: {exc} / {[s['event'] for s in r['steps']]}"
 
+    def builtin_calls():
+        code = (
+            "def f(nums, words):\n"
+            "    total = sum(nums)\n"
+            "    longest = max(words, key=len)\n"
+            "    order = sorted(nums, reverse=True)\n"
+            "    big = any(x > 3 for x in nums)\n"
+            "    for i, x in enumerate(nums):\n"
+            "        pass\n"
+            "    uniq = set(nums)\n"
+            "    return total\n"
+        )
+        r = run(code, "f([3, 1, 4, 1], ['ab', 'abc', 'a'])")
+        got = [(s["lineNumber"], b["func"], b.get("result"), b.get("running"), b.get("pick"), b.get("order"), b.get("truth"), b.get("stop"), b.get("kept"))
+               for s in r["steps"] for b in s.get("builtins", [])]
+        want = [
+            (2, "sum", "9", ["3", "4", "8", "9"], None, None, None, None, None),
+            (3, "max", "'abc'", None, 1, None, None, None, None),
+            (4, "sorted", "[4, 3, 1, 1]", None, None, [2, 0, 1, 3], None, None, None),
+            (5, "any", "True", None, None, None, [False, False, True], 2, None),
+            (6, "enumerate", None, None, None, None, None, None, None),  # 只在第一圈說明
+            (8, "set", "{1, 3, 4}", None, None, None, None, None, [True, True, True, False]),
+        ]
+        if got != want:
+            return f"expected {want}, got {got}"
+
+    def builtin_calls_are_safe():
+        code = (
+            "def g(nums):\n"
+            "    it = iter(nums)\n"
+            "    first = sum(it)\n"
+            "    ok = len(nums) > 9 and all(nums)\n"
+            "    def max(x):\n"
+            "        return 0\n"
+            "    m = max(nums)\n"
+            "    return first + m\n"
+        )
+        r = run(code, "g([1, 2, 3])")
+        cards = [b["src"] for s in r["steps"] for b in s.get("builtins", [])]
+        if cards or r["returnValue"]["value"] != 6:
+            return f"iterators, short-circuited calls and shadowed names must not be pre-evaluated: {cards} / {fmt(r['returnValue'])}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -507,6 +549,8 @@ def tracer_cases():
         ("TrieNode() constructor is not traced", trie_init_not_traced),
         ("try / except / else / finally flow", try_except_flow),
         ("finally re-raises and an uncaught exception is not a return", finally_reraise),
+        ("built-in calls show how each item is processed", builtin_calls),
+        ("built-in cards never consume iterators or run skipped calls", builtin_calls_are_safe),
     ]
 
 

@@ -62,6 +62,46 @@ export interface ExecutionStep {
   exc?: ExcFlow;
   /** try: / except 比對 / else / finally 這幾行在做什麼 */
   tryFlow?: TryFlow;
+  /** 這一行呼叫的 sum / max / sorted / any… 如何處理每個元素（執行前以唯讀方式算出） */
+  builtins?: BuiltinCall[];
+}
+
+export interface BuiltinCall {
+  func: 'sum' | 'min' | 'max' | 'sorted' | 'sort' | 'reversed' | 'any' | 'all' | 'enumerate' | 'zip' | 'set' | 'Counter' | 'join';
+  src: string;
+  /** 輸入的元素（顯示用，最多 16 個） */
+  items?: string[];
+  /** 超過 16 個時省略的數量 */
+  more?: number;
+  result?: string;
+  /** sum：每加一個之後的累計 */
+  running?: string[];
+  /** min / max：勝出的元素 */
+  pick?: number;
+  /** key= 算出的比較值 */
+  keys?: string[];
+  /** sorted / sort / reversed：結果中第 k 個是原本的第 order[k] 個 */
+  order?: number[];
+  reverse?: boolean;
+  /** list.sort() 的 list 名稱 */
+  target?: string;
+  /** any / all：每個元素的真假，stop 為短路停下的位置；elt / var 來自產生器運算式 */
+  truth?: boolean[];
+  stop?: number;
+  elt?: string;
+  var?: string;
+  /** enumerate 的起始編號 */
+  start?: number;
+  /** zip */
+  names?: string[];
+  columns?: string[][];
+  count?: number;
+  /** set：是否第一次出現（保留） */
+  kept?: boolean[];
+  /** Counter：[值, 次數] */
+  counts?: [string, number][];
+  /** join 的分隔字串 */
+  sep?: string;
 }
 
 export interface ExcFlow {

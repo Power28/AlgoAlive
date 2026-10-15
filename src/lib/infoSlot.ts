@@ -1,4 +1,4 @@
-import type { Condition, ExecutionStep, LogicNode } from '../types';
+import type { BuiltinCall, Condition, ExecutionStep, LogicNode } from '../types';
 
 /**
  * 視覺化最上方「卡片欄位」的高度（px）。
@@ -26,6 +26,8 @@ const MULTI_CARD = 190;
 const COMP_CARD = 128;
 const JUMP_CARD = 92;
 const TRY_CARD = 120;
+const BUILTIN_CARD = 142;
+const BUILTIN_ROW = 30;
 const EXC_BASE = 104;
 const EXC_ROW = 30;
 const CARD_GAP = 12;
@@ -40,11 +42,23 @@ function stepCardHeight(step: ExecutionStep): number {
       step.comp ? COMP_CARD : 0,
       step.jump ? JUMP_CARD : 0,
       step.tryFlow ? TRY_CARD : 0,
+      ...(step.builtins ?? []).map(builtinHeight),
     ].filter(Boolean);
     return cards.reduce((a, b) => a + b, 0) + Math.max(0, cards.length - 1) * CARD_GAP;
   }
   if (step.exc) return EXC_BASE + Math.max(1, step.exc.route.length) * EXC_ROW;
   return step.returnValue || step.exception ? BANNER : 0;
+}
+
+/** 內建函式卡片：一列元素；有 key / 累計值多一行小字，zip 每多一個序列多一列，元素多時會換行 */
+function builtinHeight(b: BuiltinCall): number {
+  let h = BUILTIN_CARD;
+  if (b.keys || b.running || b.truth || b.func === 'enumerate') h += 14;
+  if (b.columns) h += (b.columns.length - 1) * BUILTIN_ROW;
+  if (b.counts) h += BUILTIN_ROW;
+  const n = b.columns ? Math.max(...b.columns.map((c) => c.length)) : (b.items?.length ?? 0);
+  if (n > 10) h += BUILTIN_ROW + (b.keys || b.running || b.truth ? 14 : 0);
+  return h;
 }
 
 function conditionHeight(c: Condition): number {

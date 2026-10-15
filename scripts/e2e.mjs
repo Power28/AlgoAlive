@@ -428,6 +428,30 @@ async function testTryExcept(page) {
   record('except card answers whether the exception matches', /Is ValueError a match for except ValueError\?[\s\S]*yes — caught!/.test(check) ? null : `got ${JSON.stringify(check)}`);
 }
 
+async function testBuiltins(page) {
+  console.log('Built-in functions');
+  // 1984：nums.sort() — 格子先照原本順序 9 4 1 7，再滑到 1 4 7 9
+  await openAndStepTo(page, 'builtins', 'lc1984', '[data-builtin]', 'sort', { keepOpen: true });
+  const chips = () => page.$eval('main [data-reorder]', (el) => ({ state: el.dataset.reorder, text: el.innerText.split(/\s+/).join(' ') }));
+  const start = await chips();
+  await sleep(1200);
+  const done = await chips();
+  record('sort card slides items into sorted order', start.state === 'start' && start.text === '9 4 1 7' && done.state === 'done' && done.text === '1 4 7 9' ? null : `got ${JSON.stringify({ start, done })}`);
+  // 下一張：min(…) 標出勝出的差值
+  await page.click('[data-action="next"]');
+  await sleep(1200);
+  const pick = await page.evaluate(() => ({
+    card: document.querySelector('main [data-builtin]')?.innerText ?? '',
+    winner: document.querySelector('main [data-builtin] [data-pick]')?.innerText ?? null,
+  }));
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('min card marks the smallest item', /keep the smallest[\s\S]*→\s*2/.test(pick.card) && pick.winner === '2' ? null : `got ${JSON.stringify(pick)}`);
+
+  // 896：all(a <= b …) 在第一組 (6, 5) 就停
+  const all = await openAndStepTo(page, 'builtins', 'lc896', '[data-builtin]:nth-of-type(2)', 'stops at the first False');
+  record('all() card stops at the first False', /\(6, 5\)[\s\S]*False[\s\S]*stopped here/.test(all) ? null : `got ${JSON.stringify(all)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -465,6 +489,7 @@ try {
   await testStatements(page);
   await testTrieJumpGrid(page);
   await testTryExcept(page);
+  await testBuiltins(page);
   await testDemo(page);
   await testExamples(page, expected);
 

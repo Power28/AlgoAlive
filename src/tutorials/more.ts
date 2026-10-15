@@ -260,4 +260,93 @@ finally:
       },
     ],
   },
+  {
+    id: 'builtins',
+    category: 'techniques',
+    title: { en: 'Built-in Functions', zh: '內建函式' },
+    tagline: {
+      en: 'sum, min, max, sorted, any, all, zip, enumerate… replace whole loops with one call — know what each one does inside.',
+      zh: 'sum、min、max、sorted、any、all、zip、enumerate……一個呼叫就取代整個迴圈——要知道它們在裡面做了什麼。',
+    },
+    whenToUse: [
+      { en: 'Aggregates over a whole sequence: total, smallest, largest, "is every / any item …".', zh: '對整個序列做彙總：總和、最小、最大、「是不是每個 / 有沒有任何一個……」。' },
+      { en: 'Sorting by a custom rule with `key=`, e.g. intervals by start: `intervals.sort(key=lambda x: x[0])`.', zh: '用 `key=` 自訂排序規則，例如區間依起點排序：`intervals.sort(key=lambda x: x[0])`。' },
+      { en: 'Walking several sequences together (`zip`) or with indexes (`enumerate`).', zh: '同時走訪多個序列（`zip`）或連同索引一起走訪（`enumerate`）。' },
+    ],
+    idea: [
+      { en: '`sum` adds one by one; `min` / `max` compare one by one and keep the first best item.', zh: '`sum` 一個一個加；`min` / `max` 逐一比較，留下最先出現的最佳元素。' },
+      { en: '`sorted(x)` returns a new list; `x.sort()` sorts in place and returns None. Both are stable.', zh: '`sorted(x)` 回傳新的 list；`x.sort()` 原地排序、回傳 None。兩者都是穩定排序。' },
+      { en: '`any` stops at the first True, `all` at the first False — later items are never looked at.', zh: '`any` 遇到第一個 True 就停，`all` 遇到第一個 False 就停——後面的元素完全不會被看。' },
+      { en: '`zip` stops when the shortest sequence runs out.', zh: '`zip` 在最短的序列用完時就停。' },
+    ],
+    template: `total = sum(nums)
+largest = max(nums)
+longest = max(words, key=len)
+ordered = sorted(nums, reverse=True)
+ok = all(a <= b for a, b in zip(nums, nums[1:]))
+for i, x in enumerate(nums):
+    ...`,
+    complexity: { time: 'O(n); sorting O(n log n)', space: 'O(1); sorted O(n)', note: { en: 'Each call still walks the data — calling max() inside a loop makes it O(n²).', zh: '每個呼叫仍然要走訪資料——在迴圈裡呼叫 max() 會變成 O(n²)。' } },
+    pitfalls: [
+      { en: '`x = x.sort()` sets x to None — use `x.sort()` alone, or `x = sorted(x)`.', zh: '`x = x.sort()` 會讓 x 變成 None——單獨寫 `x.sort()`，或用 `x = sorted(x)`。' },
+      { en: '`max([])` raises ValueError; pass `default=` when the sequence can be empty.', zh: '`max([])` 會拋出 ValueError；序列可能是空的時候要給 `default=`。' },
+      { en: '`sorted("bca")` returns a list of characters — join it back with `"".join(...)`.', zh: '`sorted("bca")` 回傳字元的 list——要用 `"".join(...)` 接回字串。' },
+    ],
+    examples: [
+      {
+        id: 'lc49',
+        number: 49,
+        title: { en: 'Group Anagrams', zh: '字母異位詞分組' },
+        difficulty: 'medium',
+        note: {
+          en: 'Anagrams become the same string after sorting their letters, so that sorted string is the group key.',
+          zh: '異位詞把字母排序後會變成同一個字串，所以用排序後的字串當分組的 key。',
+        },
+        code: `def groupAnagrams(strs: List[str]) -> List[List[str]]:
+    groups = {}
+    for s in strs:
+        key = "".join(sorted(s))
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(s)
+    return list(groups.values())
+`,
+        call: 'groupAnagrams(["eat", "tea", "tan", "ate", "nat", "bat"])',
+        expected: '[[\'eat\', \'tea\', \'ate\'], [\'tan\', \'nat\'], [\'bat\']]',
+      },
+      {
+        id: 'lc896',
+        number: 896,
+        title: { en: 'Monotonic Array', zh: '單調數列' },
+        difficulty: 'easy',
+        note: {
+          en: '`zip(nums, nums[1:])` pairs each number with the next one; `all` stops at the first pair that breaks the order.',
+          zh: '`zip(nums, nums[1:])` 把每個數字和下一個配成一組；`all` 遇到第一組順序不對的就停。',
+        },
+        code: `def isMonotonic(nums: List[int]) -> bool:
+    increasing = all(a <= b for a, b in zip(nums, nums[1:]))
+    decreasing = all(a >= b for a, b in zip(nums, nums[1:]))
+    return increasing or decreasing
+`,
+        call: 'isMonotonic([6, 5, 4, 4])',
+        expected: 'True',
+      },
+      {
+        id: 'lc1984',
+        number: 1984,
+        title: { en: 'Minimum Difference Between Highest and Lowest of K Scores', zh: '學生分數的最小差值' },
+        difficulty: 'easy',
+        note: {
+          en: 'After sorting, the best k scores are always next to each other: check every window of k.',
+          zh: '排序後，最好的 k 個分數一定相鄰：檢查每個長度 k 的區間。',
+        },
+        code: `def minimumDifference(nums: List[int], k: int) -> int:
+    nums.sort()
+    return min(nums[i + k - 1] - nums[i] for i in range(len(nums) - k + 1))
+`,
+        call: 'minimumDifference([9, 4, 1, 7], 2)',
+        expected: '2',
+      },
+    ],
+  },
 ];

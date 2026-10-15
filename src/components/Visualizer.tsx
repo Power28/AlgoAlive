@@ -17,6 +17,7 @@ import { ContextBar } from './ContextBar';
 import { OpPanel } from './OpPanel';
 import { CompPanel, JumpPanel, MultiPanel } from './StatementPanels';
 import { ExcPanel, TryPanel } from './TryPanels';
+import { BuiltinPanel } from './BuiltinPanel';
 import { HeapView } from './HeapView';
 import { RecursionTree } from './RecursionTree';
 import type { CallTree } from '../lib/callTree';
@@ -164,14 +165,16 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
   const comp = step.event === 'line' ? step.comp : undefined;
   const jump = step.event === 'line' ? step.jump : undefined;
   const tryFlow = step.event === 'line' ? step.tryFlow : undefined;
+  const builtinCalls = step.event === 'line' ? step.builtins : undefined;
   const returned = step.event === 'return' ? step.returnValue : undefined;
-  const hasCard = !!(cond || calc || op || multi || comp || jump || tryFlow || returned || step.event === 'exception');
+  const hasCard = !!(cond || calc || op || multi || comp || jump || tryFlow || builtinCalls?.length || returned || step.event === 'exception');
   const cards = (
     <>
       {cond && <ConditionPanel key={`cond-${step.stepIndex}`} condition={cond} heap={heap} line={step.lineNumber} />}
       {calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={calc} line={step.lineNumber} />}
       {op && <OpPanel key={`op-${step.stepIndex}`} op={op} line={step.lineNumber} />}
       {multi && <MultiPanel key={`multi-${step.stepIndex}`} multi={multi} line={step.lineNumber} />}
+      {builtinCalls?.map((b, i) => <BuiltinPanel key={`builtin-${step.stepIndex}-${i}`} call={b} line={step.lineNumber} />)}
       {tryFlow && <TryPanel key={`try-${step.stepIndex}`} flow={tryFlow} line={step.lineNumber} />}
       {jump && <JumpPanel key={`jump-${step.stepIndex}`} jump={jump} line={step.lineNumber} next={next} />}
       {comp && <CompPanel key={`comp-${step.stepIndex}`} comp={comp} line={step.lineNumber} heap={heap} />}
