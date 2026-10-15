@@ -61,6 +61,87 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
     ],
   },
   {
+    id: 'recursion',
+    category: 'techniques',
+    title: { en: 'Recursion & Memoization', zh: '遞迴與記憶化' },
+    tagline: {
+      en: 'Solve a problem by calling yourself on smaller inputs; remember answers you already computed so each subproblem is solved once.',
+      zh: '把問題交給「更小的自己」去解；把算過的答案記下來，每個子問題只算一次。',
+    },
+    whenToUse: [
+      { en: 'The answer for `n` is defined by answers for smaller inputs (Fibonacci, climbing stairs, tree problems).', zh: '`n` 的答案由更小輸入的答案組成（費氏數列、爬樓梯、樹的問題）。' },
+      { en: 'The recursion tree has the **same subproblem** in many branches — that is when memoization pays off.', zh: '遞迴樹的很多分支出現**相同的子問題**——這時記憶化就很划算。' },
+      { en: 'You want a top-down version of a DP before turning it into a table.', zh: '想先寫出「由上而下」的 DP，之後再改成表格。' },
+    ],
+    idea: [
+      { en: '**Base case** first: the smallest inputs return directly.', zh: '先寫**終止條件**：最小的輸入直接回傳。' },
+      { en: 'Each call waits for its sub-calls, then combines their results — watch the recursion tree grow downward and the return values flow back up.', zh: '每次呼叫都會等子呼叫回傳再組合結果——觀察遞迴樹往下長、回傳值再一層層往上傳。' },
+      { en: 'Memoization: check a dict before recursing, store the result after computing. Repeated branches disappear from the tree.', zh: '記憶化：遞迴前先查 dict，算完把結果存起來。重複的分支就會從樹上消失。' },
+    ],
+    template: `memo = {}
+
+def solve(n):
+    if n < 2:
+        return base
+    if n in memo:
+        return memo[n]
+    memo[n] = combine(solve(n - 1), solve(n - 2))
+    return memo[n]`,
+    complexity: {
+      time: 'O(2ⁿ) → O(n)',
+      space: 'O(n)',
+      note: { en: 'Naive Fibonacci makes exponentially many calls; with memoization each n is computed once.', zh: '沒有記憶化的費氏數列呼叫次數是指數級；加上記憶化後每個 n 只算一次。' },
+    },
+    pitfalls: [
+      { en: 'Missing or wrong base case → infinite recursion (`RecursionError`).', zh: '缺少或寫錯終止條件 → 無窮遞迴（`RecursionError`）。' },
+      { en: 'Using a mutable default argument (`memo={}`) as the cache — it is shared across calls of the function.', zh: '用可變的預設參數（`memo={}`）當快取——它會在不同次呼叫之間共用。' },
+    ],
+    examples: [
+      {
+        id: 'lc509',
+        number: 509,
+        title: { en: 'Fibonacci Number', zh: '費氏數列' },
+        difficulty: 'easy',
+        note: {
+          en: 'No memoization: look how often fib(2) and fib(1) appear in the recursion tree.',
+          zh: '沒有記憶化：看看遞迴樹裡 fib(2)、fib(1) 被重複算了幾次。',
+        },
+        code: `def fib(n: int) -> int:
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+`,
+        call: 'fib(5)',
+        expected: '5',
+      },
+      {
+        id: 'lc1137',
+        number: 1137,
+        title: { en: 'N-th Tribonacci Number', zh: '第 N 個泰波那契數' },
+        difficulty: 'easy',
+        note: {
+          en: 'With memoization the second visit to a subproblem returns immediately — the tree stays small even though each call branches three ways.',
+          zh: '有了記憶化，第二次遇到同一個子問題會直接回傳——即使每次呼叫分成三支，遞迴樹還是很小。',
+        },
+        code: `def tribonacci(n: int) -> int:
+    memo = {}
+
+    def t(k: int) -> int:
+        if k < 3:
+            return 1 if k else 0
+        if k in memo:
+            return memo[k]
+        memo[k] = t(k - 1) + t(k - 2) + t(k - 3)
+        return memo[k]
+
+    return t(n)
+`,
+        call: 'tribonacci(6)',
+        expected: '13',
+      },
+    ],
+  },
+  {
     id: 'backtracking',
     category: 'techniques',
     title: { en: 'Backtracking', zh: '回溯法' },

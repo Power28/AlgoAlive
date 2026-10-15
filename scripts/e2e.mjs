@@ -335,6 +335,47 @@ async function testOps(page) {
   await page.click('[role="tab"][aria-selected="true"] button');
 }
 
+async function testRecursionTree(page) {
+  console.log('Recursion tree');
+  await page.click('[data-action="library"]');
+  await page.waitForSelector('[data-topic="recursion"]');
+  await page.click('[data-topic="recursion"]');
+  await page.waitForSelector('[data-example="lc509"]');
+  await page.click('[data-example="lc509"]');
+  await sleep(250);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  await page.click('[data-action="last"]');
+  await sleep(400);
+  const calls = await page.$$eval('main [data-recursion-tree] button', (els) => els.length);
+  record('recursion tree shows every call of fib(5)', calls === 15 ? null : `expected 15 calls, got ${calls}`);
+  const returned = await page.$eval('main [data-recursion-tree] button', (el) => el.innerText.replace(/\s+/g, ' ').trim());
+  record('root call shows its return value', returned === 'fib(5) → 5' ? null : `got ${JSON.stringify(returned)}`);
+  // 播放途中：樹上標成「目前」的節點，必須和呼叫堆疊最內層是同一次呼叫
+  await page.click('[data-action="first"]');
+  const mismatches = [];
+  for (let i = 0; i < 40; i++) {
+    const pair = await page.evaluate(() => {
+      const cur = document.querySelector('main [data-recursion-tree] button span.font-semibold')?.textContent.trim();
+      // 剛回傳的那一層還在播離場動畫、仍在 DOM 中，所以用 data-current 找目前這一層
+      const top = document.querySelector('main [data-call-stack] [data-current]')?.innerText.replace(/\s+/g, '') ?? '';
+      return { cur, top };
+    });
+    const n = pair.top.match(/n=(-?\d+)/)?.[1];
+    if (pair.cur && n !== undefined && pair.cur !== `fib(${n})`) mismatches.push(`${pair.cur} vs ${pair.top}`);
+    await page.click('[data-action="next"]');
+    await sleep(300); // 等呼叫堆疊的離場動畫結束，舊的那一層才會從 DOM 移除
+  }
+  record('current call in the tree matches the call stack', mismatches.length ? mismatches.slice(0, 3).join(' | ') : null);
+  // 點第 2 次呼叫 fib(4)：跳到它開始的那一步
+  await page.evaluate(() => document.querySelectorAll('main [data-recursion-tree] button')[1].click());
+  await sleep(300);
+  const stepText = await page.evaluate(() => document.body.innerText.match(/Step (\d+) \/ \d+/)?.[1]);
+  const stack = await page.evaluate(() => document.querySelector('main [data-call-stack]')?.innerText ?? '');
+  record('clicking a call jumps to where it starts', Number(stepText) < 10 && /n=4/.test(stack) ? null : `step ${stepText}, stack ${JSON.stringify(stack)}`);
+  await page.click('[role="tab"][aria-selected="true"] button');
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -368,6 +409,7 @@ try {
   await testLogic(page);
   await testContext(page);
   await testOps(page);
+  await testRecursionTree(page);
   await testDemo(page);
   await testExamples(page, expected);
 

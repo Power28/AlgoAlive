@@ -53,6 +53,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
                       current ? 'border-brand/60 bg-brand/10 text-ink-100' : 'border-ink-700 text-ink-400'
                     }`}
                     title={current ? undefined : t('waitingAt', { n: frame.line })}
+                    data-current={current || undefined}
                   >
                     <span className={current ? 'font-semibold text-brand' : ''}>{frame.func}</span>
                     <span>({frame.args.map(([n, v]) => `${n}=${v}`).join(', ')})</span>

@@ -13,6 +13,7 @@ import { computeCellKeys } from './lib/cellKeys';
 import { analyzeHeaps, analyzeIndexing } from './lib/indexing';
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
+import { buildCallTree, showCallTree } from './lib/callTree';
 import { lineHint } from './components/ConditionPanel';
 import { runner, type RuntimeStatus } from './runtime/runner';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
@@ -57,6 +58,10 @@ export default function App() {
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
   const heapNames = useMemo(() => analyzeHeaps(run?.code ?? ''), [run?.code]);
+  const callTree = useMemo(() => {
+    const tree = buildCallTree(steps);
+    return showCallTree(tree) ? tree : null;
+  }, [steps]);
   const playback = usePlayback(steps.length, trace);
   const step = steps[playback.index];
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
@@ -260,6 +265,7 @@ export default function App() {
               <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
+                callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
               />
             ) : (

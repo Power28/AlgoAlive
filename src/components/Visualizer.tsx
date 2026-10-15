@@ -16,6 +16,8 @@ import { CalcPanel } from './CalcPanel';
 import { ContextBar } from './ContextBar';
 import { OpPanel } from './OpPanel';
 import { HeapView } from './HeapView';
+import { RecursionTree } from './RecursionTree';
+import type { CallTree } from '../lib/callTree';
 import { cellsOf, gridCellsOf, stepMarks } from '../lib/stepMarks';
 import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
@@ -30,12 +32,14 @@ interface Props {
   context?: { stack: boolean; loops: boolean; frameKeys: string[] };
   /** 被 heapq 操作的 list 名稱（見 analyzeHeaps），額外畫成堆積樹 */
   heapNames?: Set<string>;
+  /** 遞迴樹（見 buildCallTree）；只在有遞迴的程式傳入 */
+  callTree?: { tree: CallTree; index: number; onSeek?: (step: number) => void };
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context, heapNames }: Props) {
+export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context, heapNames, callTree }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -192,6 +196,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
         </div>
       )}
 
+      {callTree && <RecursionTree tree={callTree.tree} index={callTree.index} onSeek={callTree.onSeek} />}
       {kinds.has('list') && <LinkedListView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} compared={marks.refs} />}
       {kinds.has('tree') && <TreeView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} compared={marks.refs} />}
       {graphs.map(({ graph, prev: prevGraph }) => (

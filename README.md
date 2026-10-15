@@ -21,6 +21,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 - **二元樹**：自動排版的樹狀圖，翻轉等修改會讓整棵子樹滑到新位置；遞迴時以虛線節點與橘色連線標出外層呼叫的路徑（例如 `root·2` 代表第 2 層呼叫的 `root`）
 - **一般圖**：自訂節點（`Node.neighbors`）或名為 `graph` / `adj` 的鄰接串列（`dict` 或 `list[list]`，可帶權重 `(v, w)`）畫成節點連線圖；`node` / `nxt` 等變數標在節點上並高亮目前走的邊，`visited` 填色、`queue` / `stack` 中的節點虛線框、`path` 的邊高亮，`indegree` / `dist` 等每個節點一個值的陣列顯示成旁邊的小標籤，`color` 陣列直接替節點著色
 - **絲滑交換動畫**：前端追蹤每個格子的「身分」，swap / sort 時格子會真的移動（framer-motion `layout`）
+- **遞迴樹**：有遞迴（或多次呼叫輔助函式）時，把到目前為止的所有呼叫畫成一棵樹：目前這次呼叫亮框、還在堆疊上等待子呼叫的是虛線框（連線為橘色）、已回傳的標出回傳值（`→ 3`）；樹隨播放一個個長出來，位置依最終的樹先排好所以不會推擠；點任一節點跳到那次呼叫開始的步驟。對照有無記憶化時樹的大小特別清楚
 - **容器操作**：`append` / `pop` / `popleft` / `appendleft` / `insert` / `remove` / `add` / `discard`、`heapq.heappush` / `heappop` / `heapify`、`d[k] = v` / `del d[k]` 執行前，「容器操作」卡片用一句話說明會做什麼（「從 stack 的尾端取出 5，寫入 x」「從 queue 的前端取出 1」），要取出的值以唯讀方式事先算出；陣列格子有進場 / 離場動畫，取出後其餘格子滑過去補位；對空容器 `pop` 會事先警告
 - **堆積樹狀圖**：被 `heapq` 操作的 list 另外畫成完全二元樹（頂端標示「最小」），推入 / 取出後節點移動到新位置，看得出堆積如何重新排好
 - **迴圈與函式呼叫**：視覺化最上方固定的兩列資訊——「迴圈」顯示目前是第幾圈（`for i in range(3, n + 1)` → 第 2 / 4 圈，附進度點；巢狀迴圈逐層顯示，最後一次檢查標示「結束」）；`for num in nums` 這種沒有索引的寫法會在 `nums` 上多一個 `num` 指針。「呼叫堆疊」由外而內列出每一層呼叫與參數（`maxDepth(root=(3)) › maxDepth(root=(9)) › …`），新呼叫滑入、回傳時顯示回傳值後收掉；只有多層呼叫（遞迴或輔助函式）時才會出現
@@ -57,7 +58,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 | 堆疊、佇列與堆積 | 堆疊（20、150）· 佇列與雙端佇列（1700、239）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347、1046） |
 | 圖與網格 | 圖的走訪（133、797、785）· Dijkstra 最短路徑（743）· 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
 | 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
-| 其他技巧 | 貪心法（121、55）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191） |
+| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191） |
 
 
 教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
@@ -113,7 +114,7 @@ src/
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  ├─ graph.ts             # 物件圖 / 鄰接串列 → 節點與邊，以及 visited、queue、path 等走訪狀態
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ tutorials/              # 雙語演算法教學與範例題（27 個主題、52 題）
+├─ tutorials/              # 雙語演算法教學與範例題（28 個主題、54 題）
 ├─ components/             # CodeEditor / ArrayView / GridView / StructureViews / GraphView / CollectionViews / Visualizer
 │                          # Controls / TabBar / Library / TutorialView
 ├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）

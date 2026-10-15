@@ -5,6 +5,7 @@ import { computeCellKeys } from '../lib/cellKeys';
 import { analyzeHeaps, analyzeIndexing } from '../lib/indexing';
 import { infoSlotHeight } from '../lib/infoSlot';
 import { contextInfo } from '../lib/context';
+import { buildCallTree, showCallTree } from '../lib/callTree';
 import { runner } from '../runtime/runner';
 import type { Example, Tutorial } from '../tutorials';
 import type { TraceResult } from '../types';
@@ -84,6 +85,10 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
   const heapNames = useMemo(() => analyzeHeaps(example.code), [example.code]);
+  const callTree = useMemo(() => {
+    const tree = buildCallTree(steps);
+    return showCallTree(tree) ? tree : null;
+  }, [steps]);
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
@@ -157,6 +162,18 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
               <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
+                callTree={
+                  callTree
+                    ? {
+                        tree: callTree,
+                        index,
+                        onSeek: (i) => {
+                          setIndex(i);
+                          setPlaying(false);
+                        },
+                      }
+                    : undefined
+                }
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[index] ?? [] }}
               />
             </div>
