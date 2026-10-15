@@ -315,6 +315,35 @@ def tracer_cases():
         if entered != 5:  # depth(3)、depth(9)、depth(9).left、depth(9).right、depth(3).right
             return f"expected 5 calls to be marked as entered, got {entered}"
 
+    def container_ops():
+        code = (
+            "def f(st, q, seen, d):\n    st.append(3)\n    x = st.pop()\n    y = q.popleft()\n"
+            "    seen.add(1)\n    d['a'] = 5\n    return x + y\n"
+        )
+        r = run(code, "f([1, 2], deque([7, 8]), {1}, {})")
+        ops = [(s["op"]["kind"], s["op"]["target"], s["op"].get("display"), s["op"].get("index"), s["op"].get("assignTo"))
+               for s in r["steps"] if s.get("op")]
+        want = [("push", "st", "3", 2, None), ("pop", "st", "3", 2, "x"), ("popleft", "q", "7", 0, "y"),
+                ("add", "seen", "1", None, None), ("setitem", "d", "5", None, None)]
+        if ops != want:
+            return f"expected {want}, got {ops}"
+        if fmt(r["returnValue"]) != "10":
+            return f"reading ahead must not change the program: returned {fmt(r['returnValue'])}"
+
+    def heap_ops():
+        code = "def g(stones):\n    heap = [-s for s in stones]\n    heapq.heapify(heap)\n    first = -heapq.heappop(heap)\n    heapq.heappush(heap, -3)\n    return first\n"
+        r = run(code, "g([2, 7, 4])")
+        ops = [(s["op"]["kind"], s["op"]["container"], s["op"].get("display")) for s in r["steps"] if s.get("op")]
+        want = [("heapify", "heap", None), ("heappop", "heap", "-7"), ("heappush", "heap", "-3")]
+        if ops != want or fmt(r["returnValue"]) != "7":
+            return f"expected {want} returning 7, got {ops} / {fmt(r['returnValue'])}"
+
+    def empty_pop_flagged():
+        r = run("def h(st):\n    return st.pop()\n", "h([])")
+        op = next((s["op"] for s in r["steps"] if s.get("op")), None)
+        if not op or not op.get("empty") or (r.get("error") or {}).get("type") != "IndexError":
+            return f"pop on an empty list should be flagged before the IndexError, got {op}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -336,6 +365,9 @@ def tracer_cases():
         ("loop passes are counted", loop_iterations),
         ("nested loops restart their count", nested_loop_restarts),
         ("call stack lists frames and arguments", call_stack_frames),
+        ("container operations are described ahead of time", container_ops),
+        ("heapq operations are recognised", heap_ops),
+        ("pop on an empty container is flagged", empty_pop_flagged),
     ]
 
 

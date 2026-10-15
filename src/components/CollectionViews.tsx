@@ -16,9 +16,11 @@ interface DictProps {
   lookups: Map<string, string[]>;
   /** 整個 dict 正在被比較（例如 x in seen） */
   compared?: boolean;
+  /** 這一步對 dict 做了新增 / 刪除 */
+  written?: boolean;
 }
 
-export function DictView({ name, value, prev, lookups, compared }: DictProps) {
+export function DictView({ name, value, prev, lookups, compared, written }: DictProps) {
   const heap = useHeap();
   const t = useT();
   const prevMap = new Map(prev?.type === 'dict' ? prev.entries.map(([k, v]) => [valueKey(k), valueKey(v)]) : []);
@@ -33,7 +35,7 @@ export function DictView({ name, value, prev, lookups, compared }: DictProps) {
   return (
     <section>
       <Header name={name} kind={typeLabel(value)} meta={`size ${value.entries.length + (value.truncated ?? 0)}`} />
-      <div className="inline-block overflow-hidden rounded-lg border border-ink-600" style={markOutline(!!compared)}>
+      <div className="inline-block overflow-hidden rounded-lg border border-ink-600" style={markOutline(!!compared, !!written)}>
         <div className="grid bg-ink-700 font-mono text-[11px] text-ink-400" style={cols}>
           <div className="px-3 py-1">{t('dictKey')}</div>
           <div className="border-l border-ink-600 px-3 py-1">{t('dictValue')}</div>
@@ -80,7 +82,19 @@ export function DictView({ name, value, prev, lookups, compared }: DictProps) {
   );
 }
 
-export function SetView({ name, value, prev, compared }: { name: string; value: SequenceValue; prev?: PyValue; compared?: boolean }) {
+export function SetView({
+  name,
+  value,
+  prev,
+  compared,
+  written,
+}: {
+  name: string;
+  value: SequenceValue;
+  prev?: PyValue;
+  compared?: boolean;
+  written?: boolean;
+}) {
   const heap = useHeap();
   const prevKeys = new Set(prev?.type === 'set' ? prev.items.map(valueKey) : []);
   const hasPrev = prev?.type === 'set';
@@ -88,7 +102,7 @@ export function SetView({ name, value, prev, compared }: { name: string; value: 
   return (
     <section>
       <Header name={name} kind="set" meta={`size ${value.items.length + (value.truncated ?? 0)}`} />
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-dashed border-ink-600 p-2" style={markOutline(!!compared)}>
+      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-dashed border-ink-600 p-2" style={markOutline(!!compared, !!written)}>
         {value.items.length === 0 && <span className="px-1 font-mono text-xs text-ink-400">set()</span>}
         <AnimatePresence initial={false}>
           {value.items.map((item) => {

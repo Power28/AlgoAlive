@@ -14,6 +14,8 @@ import { GraphView } from './GraphView';
 import { ConditionPanel } from './ConditionPanel';
 import { CalcPanel } from './CalcPanel';
 import { ContextBar } from './ContextBar';
+import { OpPanel } from './OpPanel';
+import { HeapView } from './HeapView';
 import { cellsOf, gridCellsOf, stepMarks } from '../lib/stepMarks';
 import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
@@ -26,12 +28,14 @@ interface Props {
   slotHeight?: number;
   /** 呼叫堆疊 / 迴圈列（見 contextInfo）；沒給時不顯示 */
   context?: { stack: boolean; loops: boolean; frameKeys: string[] };
+  /** 被 heapq 操作的 list 名稱（見 analyzeHeaps），額外畫成堆積樹 */
+  heapNames?: Set<string>;
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context }: Props) {
+export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context, heapNames }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -145,12 +149,14 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
   // 最上方的卡片：條件判斷、計算、回傳、例外（以步驟編號當 key：連續兩步都有卡片時也會重新播放動畫）
   const cond = step.event === 'line' ? step.condition : undefined;
   const calc = step.event === 'line' ? step.calc : undefined;
+  const op = step.event === 'line' ? step.op : undefined;
   const returned = step.event === 'return' ? step.returnValue : undefined;
-  const hasCard = !!(cond || calc || returned || step.event === 'exception');
+  const hasCard = !!(cond || calc || op || returned || step.event === 'exception');
   const cards = (
     <>
       {cond && <ConditionPanel key={`cond-${step.stepIndex}`} condition={cond} heap={heap} line={step.lineNumber} />}
       {calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={calc} line={step.lineNumber} />}
+      {op && <OpPanel key={`op-${step.stepIndex}`} op={op} line={step.lineNumber} />}
       {returned && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
           <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
@@ -192,6 +198,10 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
         <GraphView key={graph.name} graph={graph} prev={prevGraph} overlay={graphOverlay(graph, vars, graphVars)} />
       ))}
       {sequences.map((s, i) => (
+        <div key={s.name} className="flex flex-col gap-3">
+        {s.kind === 'list' && (heapNames?.has(s.name) || /^(heap|min_?heap|max_?heap|pq|priority_?queue)$/i.test(s.name)) && (
+          <HeapView name={s.name} items={s.items} keys={cellKeys[s.name] ?? []} prevItems={s.prevItems} written={cellsOf(writes, s.name)} />
+        )}
         <ArrayView
           key={s.name}
           name={s.name}
@@ -206,6 +216,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
           written={cellsOf(writes, s.name)}
           wholeWritten={writes.vars.has(s.name)}
         />
+        </div>
       ))}
       {grids.map(([name, v]) => (
         <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} compared={gridCellsOf(marks, name)} written={gridCellsOf(writes, name)} />
@@ -218,10 +229,11 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
           prev={prevVars?.[name]}
           lookups={lookups}
           compared={marks.vars.has(name)}
+          written={writes.vars.has(name)}
         />
       ))}
       {sets.map(([name, v]) => (
-        <SetView key={name} name={name} value={v as SequenceValue} prev={prevVars?.[name]} compared={marks.vars.has(name)} />
+        <SetView key={name} name={name} value={v as SequenceValue} prev={prevVars?.[name]} compared={marks.vars.has(name)} written={writes.vars.has(name)} />
       ))}
       <ScalarGrid entries={scalars} prevVars={prevVars} pointerColors={pointerColors} compared={marks.vars} written={writes.vars} />
 

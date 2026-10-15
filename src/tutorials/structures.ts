@@ -155,6 +155,88 @@ return not stack`,
     ],
   },
   {
+    id: 'queue',
+    category: 'stack-queue',
+    title: { en: 'Queue & Deque', zh: '佇列與雙端佇列' },
+    tagline: {
+      en: 'First in, first out: add at the back, take from the front. A deque can do both ends in O(1).',
+      zh: '先進先出：從尾端加入、從前端取出。雙端佇列（deque）兩端都能以 O(1) 進出。',
+    },
+    whenToUse: [
+      { en: 'Simulating a line of people / tasks taking turns.', zh: '模擬排隊、輪流處理的過程。' },
+      { en: 'BFS — process nodes in the order they were discovered.', zh: 'BFS——依照被發現的順序處理節點。' },
+      { en: 'Monotonic deque: the maximum / minimum of every sliding window in O(n).', zh: '單調雙端佇列：在 O(n) 內求出每個滑動視窗的最大 / 最小值。' },
+    ],
+    idea: [
+      { en: 'Use `collections.deque`: `append()` adds at the back, `popleft()` takes from the front.', zh: '使用 `collections.deque`：`append()` 從尾端加入，`popleft()` 從前端取出。' },
+      { en: 'Never use `list.pop(0)` as a queue — every call shifts all elements (`O(n)`).', zh: '不要用 `list.pop(0)` 當佇列——每次都要把所有元素往前搬（`O(n)`）。' },
+      { en: 'A monotonic deque stores indices; pop from the back while the new value beats them, pop from the front when they leave the window.', zh: '單調雙端佇列存索引：新值比尾端大就從尾端彈出，索引離開視窗就從前端彈出。' },
+    ],
+    template: `queue = deque([start])
+while queue:
+    item = queue.popleft()
+    for nxt in neighbours(item):
+        queue.append(nxt)`,
+    complexity: { time: 'O(1) per operation', space: 'O(n)' },
+    pitfalls: [
+      { en: 'Calling `popleft()` on an empty deque raises `IndexError` — check `while queue:` first.', zh: '對空的 deque 呼叫 `popleft()` 會拋出 `IndexError`——先用 `while queue:` 檢查。' },
+      { en: 'Mixing up which end is the front: `deque[0]` is the front, `deque[-1]` is the back.', zh: '弄錯哪一端是前端：`deque[0]` 是前端，`deque[-1]` 是尾端。' },
+    ],
+    examples: [
+      {
+        id: 'lc1700',
+        number: 1700,
+        title: { en: 'Number of Students Unable to Eat Lunch', zh: '無法吃午餐的學生數量' },
+        difficulty: 'easy',
+        note: {
+          en: 'Each student is taken from the front; if they do not want the top sandwich they go to the back of the line.',
+          zh: '每次從前端取出一位學生；不想要最上面那個三明治的，就排回隊伍尾端。',
+        },
+        code: `def countStudents(students: List[int], sandwiches: List[int]) -> int:
+    queue = deque(students)
+    top = 0
+    misses = 0
+    while queue and misses < len(queue):
+        student = queue.popleft()
+        if student == sandwiches[top]:
+            top += 1
+            misses = 0
+        else:
+            queue.append(student)
+            misses += 1
+    return len(queue)
+`,
+        call: 'countStudents([1, 1, 0, 0], [0, 1, 0, 1])',
+        expected: '0',
+      },
+      {
+        id: 'lc239',
+        number: 239,
+        title: { en: 'Sliding Window Maximum', zh: '滑動視窗最大值' },
+        difficulty: 'hard',
+        note: {
+          en: '`window` keeps indices of decreasing values: smaller ones are popped from the back, expired ones from the front, so `window[0]` is always the maximum.',
+          zh: '`window` 存的是值遞減的索引：比新值小的從尾端彈出、過期的從前端彈出，所以 `window[0]` 永遠是最大值。',
+        },
+        code: `def maxSlidingWindow(nums: List[int], k: int) -> List[int]:
+    window = deque()
+    result = []
+    for i, x in enumerate(nums):
+        while window and nums[window[-1]] < x:
+            window.pop()
+        window.append(i)
+        if window[0] <= i - k:
+            window.popleft()
+        if i >= k - 1:
+            result.append(nums[window[0]])
+    return result
+`,
+        call: 'maxSlidingWindow([1, 3, 1, 2, 0, 5], 3)',
+        expected: '[3, 3, 2, 5]',
+      },
+    ],
+  },
+  {
     id: 'monotonic-stack',
     category: 'stack-queue',
     title: { en: 'Monotonic Stack', zh: '單調堆疊' },
@@ -288,6 +370,28 @@ return heap[0]`,
 `,
         call: 'topKFrequent([1, 1, 1, 2, 2, 3], 2)',
         expected: '[2, 1]',
+      },
+      {
+        id: 'lc1046',
+        number: 1046,
+        title: { en: 'Last Stone Weight', zh: '最後一塊石頭的重量' },
+        difficulty: 'easy',
+        note: {
+          en: '`heapq` is a min-heap, so the stones are stored as negative numbers: the most negative value at the top is the heaviest stone.',
+          zh: '`heapq` 是最小堆積，所以石頭以負數存放：頂端最負的值就是最重的石頭。',
+        },
+        code: `def lastStoneWeight(stones: List[int]) -> int:
+    heap = [-s for s in stones]
+    heapq.heapify(heap)
+    while len(heap) > 1:
+        first = -heapq.heappop(heap)
+        second = -heapq.heappop(heap)
+        if first != second:
+            heapq.heappush(heap, -(first - second))
+    return -heap[0] if heap else 0
+`,
+        call: 'lastStoneWeight([2, 7, 4, 1, 8, 1])',
+        expected: '1',
       },
     ],
   },

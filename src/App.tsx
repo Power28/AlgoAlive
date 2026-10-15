@@ -10,7 +10,7 @@ import { usePlayback } from './hooks/usePlayback';
 import { BLANK_CALL, BLANK_CODE, tabFromExample, useTabs } from './hooks/useTabs';
 import { useLang, useT } from './i18n';
 import { computeCellKeys } from './lib/cellKeys';
-import { analyzeIndexing } from './lib/indexing';
+import { analyzeHeaps, analyzeIndexing } from './lib/indexing';
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
 import { lineHint } from './components/ConditionPanel';
@@ -56,6 +56,7 @@ export default function App() {
   // 卡片欄位高度整段執行只算一次，播放時固定
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
+  const heapNames = useMemo(() => analyzeHeaps(run?.code ?? ''), [run?.code]);
   const playback = usePlayback(steps.length, trace);
   const step = steps[playback.index];
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
@@ -258,6 +259,7 @@ export default function App() {
             {step ? (
               <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap}
                 slotHeight={slotHeight}
+                heapNames={heapNames}
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
               />
             ) : (

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { PyValue } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
@@ -89,6 +89,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
           ))}
 
           <div className="relative flex" style={{ gap: GAP, paddingLeft: 4, paddingTop: 3 }}>
+            <AnimatePresence initial={false} mode="popLayout">
             {items.map((item, i) => {
               const changed = prevItems !== undefined && valueKey(prevItems[i]) !== valueKey(item);
               const accent = colorAt.get(i);
@@ -111,12 +112,15 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
                     // motion 元件不會清掉變成 undefined 的 style，必須明確給 'none'
                     boxShadow: accent ? `0 0 0 1px ${accent}55, 0 0 14px ${accent}33` : 'none',
                   }}
-                  animate={{ backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a' }}
+                  initial={{ opacity: 0, scale: 0.5, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0, backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a' }}
+                  exit={{ opacity: 0, scale: 0.5, y: -18, transition: { duration: 0.22 } }}
                 >
                   <span className="truncate px-1">{text}</span>
                 </motion.div>
               );
             })}
+            </AnimatePresence>
             {hasOverflowSlot && (
               <div
                 className="flex shrink-0 items-center justify-center rounded-md border border-dashed border-ink-600 text-xs text-ink-400"

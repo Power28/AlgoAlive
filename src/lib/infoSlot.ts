@@ -21,11 +21,17 @@ const BITS_EXTRA = 128;
 const LEAF_ROW = 34;
 const GATE_EXTRA = 34;
 
+const OP_CARD = 104;
+const CARD_GAP = 12;
+
 function stepCardHeight(step: ExecutionStep): number {
   if (step.event === 'line') {
-    if (step.condition) return conditionHeight(step.condition);
-    if (step.calc) return CALC_CARD + (step.calc.bits?.length ? BITS_EXTRA : 0);
-    return 0;
+    const cards = [
+      step.condition ? conditionHeight(step.condition) : 0,
+      step.calc ? CALC_CARD + (step.calc.bits?.length ? BITS_EXTRA : 0) : 0,
+      step.op ? OP_CARD : 0,
+    ].filter(Boolean);
+    return cards.reduce((a, b) => a + b, 0) + Math.max(0, cards.length - 1) * CARD_GAP;
   }
   return step.returnValue || step.exception ? BANNER : 0;
 }

@@ -48,6 +48,35 @@ export interface ExecutionStep {
   stack?: StackFrame[];
   /** 這一步是剛進入一次新的函式呼叫 */
   entered?: boolean;
+  /** 這一行的容器操作（append / pop / heappush…），值在操作發生前以唯讀方式算出 */
+  op?: ContainerOp;
+}
+
+export interface ContainerOp {
+  kind:
+    | 'push' | 'pushleft' | 'pop' | 'popleft' | 'insert' | 'extend' | 'remove'
+    | 'add' | 'discard' | 'clear'
+    | 'heappush' | 'heappop' | 'heapify' | 'heappushpop' | 'heapreplace'
+    | 'setitem' | 'delitem';
+  /** 容器變數名稱 */
+  target: string;
+  container: 'list' | 'deque' | 'set' | 'dict' | 'heap';
+  src: string;
+  /** 放入 / 取出的值 */
+  value?: PyValue;
+  display?: string;
+  /** 受影響的位置（放入的位置、被取出的格子） */
+  index?: number;
+  key?: string;
+  /** x = stack.pop()：結果寫入的變數 */
+  assignTo?: string;
+  existed?: boolean;
+  missing?: boolean;
+  empty?: boolean;
+  /** heapreplace / heappushpop 會取出的最小值 */
+  popped?: string;
+  unordered?: boolean;
+  size: number;
 }
 
 export interface LoopInfo {

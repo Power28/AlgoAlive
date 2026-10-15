@@ -606,6 +606,201 @@ class _CondAnalyzer:
         return cond
 
 
+# ─────────────── 容器操作（append / pop / heappush…） ───────────────
+
+_METHOD_OPS = {
+    "append": "push", "appendleft": "pushleft", "pop": "pop", "popleft": "popleft",
+    "insert": "insert", "extend": "extend", "remove": "remove",
+    "add": "add", "discard": "discard", "clear": "clear",
+}
+_HEAPQ_OPS = {"heappush", "heappop", "heapify", "heappushpop", "heapreplace"}
+
+
+class _OpAnalyzer:
+    """找出每一行的容器操作，執行到該行時（操作尚未發生）以唯讀方式算出會放入 / 取出的值。"""
+
+    def __init__(self, analyzer):
+        self.analyzer = analyzer
+        self.by_line = {}
+        if analyzer.tree is None:
+            return
+        for node in ast.walk(analyzer.tree):
+            if isinstance(node, ast.stmt) and node.lineno not in self.by_line:
+                spec = self._op_of(node)
+                if spec:
+                    self.by_line[node.lineno] = spec
+
+    @staticmethod
+    def _match_call(call):
+        """回傳 (種類, 容器名稱, 其餘參數)"""
+        if not isinstance(call, ast.Call):
+            return None
+        func = call.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            if func.value.id == "heapq" and func.attr in _HEAPQ_OPS and call.args and isinstance(call.args[0], ast.Name):
+                return func.attr, call.args[0].id, call.args[1:]
+            if func.attr in _METHOD_OPS:
+                return _METHOD_OPS[func.attr], func.value.id, call.args
+        if isinstance(func, ast.Name) and func.id in _HEAPQ_OPS and call.args and isinstance(call.args[0], ast.Name):
+            return func.id, call.args[0].id, call.args[1:]
+        return None
+
+    def _op_of(self, stmt):
+        src = self.analyzer._src(stmt)
+        # d[k] = v、del d[k]（只算 dict；list 的 nums[i] = x 交給一般賦值）
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            t = stmt.targets[0]
+            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
+                return {"kind": "setitem", "target": t.value.id, "key": t.slice, "value": stmt.value, "src": src}
+        if isinstance(stmt, ast.Delete) and len(stmt.targets) == 1:
+            t = stmt.targets[0]
+            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
+                return {"kind": "delitem", "target": t.value.id, "key": t.slice, "src": src}
+        value = getattr(stmt, "value", None)
+        if not isinstance(stmt, (ast.Expr, ast.Assign, ast.AnnAssign, ast.Return)) or value is None:
+            return None
+        call = next((n for n in ast.walk(value) if self._match_call(n)), None)
+        if call is None:
+            return None
+        kind, target, args = self._match_call(call)
+        spec = {"kind": kind, "target": target, "args": args, "src": src}
+        # x = stack.pop()：結果直接寫入變數時，卡片上註明寫到哪裡
+        if isinstance(stmt, ast.Assign) and stmt.value is call and len(stmt.targets) == 1:
+            spec["assignTo"] = self.analyzer._src(stmt.targets[0])
+        return spec
+
+    def evaluate(self, frame, ctx):
+        spec = self.by_line.get(frame.f_lineno)
+        if spec is None:
+            return None
+        try:
+            return self._evaluate(spec, frame, ctx)
+        except Exception:
+            return None
+
+    def _arg(self, node, frame):
+        try:
+            return self.analyzer._eval(node, frame), True
+        except _Unknown:
+            return None, False
+
+    def _evaluate(self, spec, frame, ctx):
+        a = self.analyzer
+        container = frame.f_locals.get(spec["target"])
+        if container is None and spec["target"] in frame.f_globals:
+            container = frame.f_globals[spec["target"]]
+        kind = spec["kind"]
+        if isinstance(container, collections.deque):
+            ckind = "deque"
+        elif isinstance(container, list):
+            ckind = "heap" if kind in _HEAPQ_OPS else "list"
+        elif isinstance(container, (set, frozenset)):
+            ckind = "set"
+        elif isinstance(container, dict):
+            ckind = "dict"
+        else:
+            return None
+        if kind in ("setitem", "delitem") and ckind != "dict":
+            return None
+
+        op = {"kind": kind, "target": spec["target"], "container": ckind, "src": spec["src"]}
+        if spec.get("assignTo"):
+            op["assignTo"] = spec["assignTo"]
+
+        def put(value):
+            op["value"] = _ser(value, ctx)
+            op["display"] = a._result_short(value)
+
+        args = []
+        for node in spec.get("args", []):
+            value, known = self._arg(node, frame)
+            if not known:
+                return None  # 參數含有無法安全求值的部分，就不預先說明
+            args.append(value)
+        n = len(container)
+
+        if kind == "push":
+            put(args[0]); op["index"] = n
+        elif kind == "pushleft":
+            put(args[0]); op["index"] = 0
+        elif kind == "insert":
+            i = args[0]
+            op["index"] = max(0, min(n, i if i >= 0 else n + i))
+            put(args[1])
+        elif kind == "extend":
+            try:
+                put(list(args[0]))
+            except TypeError:
+                return None
+            op["index"] = n
+        elif kind == "pop":
+            if ckind == "dict":
+                key = args[0]
+                op["key"] = a._result_short(key)
+                if key in container:
+                    put(container[key])
+                elif len(args) > 1:
+                    put(args[1]); op["missing"] = True
+                else:
+                    op["missing"] = True
+            elif ckind == "set":
+                op["unordered"] = True
+            elif n == 0:
+                op["empty"] = True
+            else:
+                i = args[0] if args else -1
+                i = i if i >= 0 else n + i
+                if 0 <= i < n:
+                    put(container[i]); op["index"] = i
+        elif kind == "popleft":
+            if n == 0:
+                op["empty"] = True
+            else:
+                put(container[0]); op["index"] = 0
+        elif kind == "remove":
+            put(args[0])
+            if args[0] in container and ckind in ("list", "deque"):
+                op["index"] = list(container).index(args[0])
+            elif args[0] not in container:
+                op["missing"] = True
+        elif kind in ("add", "discard"):
+            put(args[0])
+            op["existed"] = args[0] in container
+        elif kind == "clear":
+            pass
+        elif kind == "heappush":
+            put(args[0]); op["index"] = n
+        elif kind == "heappop":
+            if n == 0:
+                op["empty"] = True
+            else:
+                put(container[0]); op["index"] = 0
+        elif kind in ("heappushpop", "heapreplace"):
+            put(args[0])
+            if n:
+                op["popped"] = a._result_short(container[0])
+                op["index"] = 0
+        elif kind == "setitem":
+            key, ok1 = self._arg(spec["key"], frame)
+            value, ok2 = self._arg(spec["value"], frame)
+            if not (ok1 and ok2):
+                return None
+            op["key"] = a._result_short(key)
+            op["existed"] = key in container
+            put(value)
+        elif kind == "delitem":
+            key, ok = self._arg(spec["key"], frame)
+            if not ok:
+                return None
+            op["key"] = a._result_short(key)
+            if key in container:
+                put(container[key])
+            else:
+                op["missing"] = True
+        op["size"] = n
+        return op
+
+
 # ─────────────── 迴圈圈數與呼叫堆疊 ───────────────
 
 _SIZED_CALLS = {"range", "enumerate", "reversed", "zip"}
@@ -789,6 +984,7 @@ def algoalive_run(code, call_src):
     no_value = object()
     conditions = _CondAnalyzer(code, registry)
     loops = _LoopTracker(conditions)
+    operations = _OpAnalyzer(conditions)
     entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
     def record(frame, event, ret=no_value, **extra):
@@ -820,6 +1016,9 @@ def algoalive_run(code, call_src):
             active = loops.on_line(frame)
             if active:
                 step["loops"] = active
+            op = operations.evaluate(frame, ctx)
+            if op:
+                step["op"] = op
             cond = conditions.evaluate(frame, ctx)
             if cond:
                 step["condition"] = cond

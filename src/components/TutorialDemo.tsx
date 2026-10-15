@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { useL, useT } from '../i18n';
 import { computeCellKeys } from '../lib/cellKeys';
-import { analyzeIndexing } from '../lib/indexing';
+import { analyzeHeaps, analyzeIndexing } from '../lib/indexing';
 import { infoSlotHeight } from '../lib/infoSlot';
 import { contextInfo } from '../lib/context';
 import { runner } from '../runtime/runner';
@@ -83,6 +83,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   const indexMap = useMemo(() => analyzeIndexing(example.code), [example.code]);
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
+  const heapNames = useMemo(() => analyzeHeaps(example.code), [example.code]);
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
@@ -155,6 +156,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
             <div className="origin-top-left">
               <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap}
                 slotHeight={slotHeight}
+                heapNames={heapNames}
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[index] ?? [] }}
               />
             </div>

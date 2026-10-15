@@ -312,6 +312,29 @@ async function testContext(page) {
   record('call stack shows each recursive call', frames >= 3 && /root=\(3\)/.test(stackText) ? null : `got ${JSON.stringify(stackText)}`);
 }
 
+async function testOps(page) {
+  console.log('Container ops & heap');
+  // 20：stack.append(ch) → 把 '(' 放到 stack 的尾端
+  const push = await openAndStepTo(page, 'stack', 'lc20', '[data-op]', 'at the end of stack');
+  record('op card describes a push', /stack\.append\(ch\)[\s\S]*Put '\(' at the end of stack/.test(push) ? null : `got ${JSON.stringify(push)}`);
+  // 1046：heappop 卡片 + 堆積樹
+  await page.click('[data-action="library"]');
+  await page.waitForSelector('[data-topic="heap"]');
+  await page.click('[data-topic="heap"]');
+  await page.waitForSelector('[data-example="lc1046"]');
+  await page.click('[data-example="lc1046"]');
+  await sleep(250);
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  const opText = () => page.evaluate(() => document.querySelector('main [data-op]')?.innerText ?? '');
+  for (let i = 0; i < 40 && !(await opText()).includes('Pop the smallest'); i++) await page.click('[data-action="next"]');
+  const pop = await opText();
+  record('op card explains heappop', /Pop the smallest value -8/.test(pop) ? null : `got ${JSON.stringify(pop)}`);
+  const nodes = await page.$$eval('main [data-heap="heap"] .rounded-full', (els) => els.map((e) => e.textContent.trim()));
+  record('heap is drawn as a tree with the minimum on top', nodes.length === 6 && nodes[0] === '-8' ? null : `got ${JSON.stringify(nodes)}`);
+  await page.click('[role="tab"][aria-selected="true"] button');
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -344,6 +367,7 @@ try {
   await testCalc(page);
   await testLogic(page);
   await testContext(page);
+  await testOps(page);
   await testDemo(page);
   await testExamples(page, expected);
 
