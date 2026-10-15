@@ -9,13 +9,13 @@ import { useT } from '../i18n';
 import { ArrayView } from './ArrayView';
 import { DictView, ScalarGrid, SetView } from './CollectionViews';
 import { GridView, type GridMark } from './GridView';
-import { LinkedListView, TreeView, type NodeLabel } from './StructureViews';
+import { LinkedListView, TreeView, TrieView, type NodeLabel } from './StructureViews';
 import { GraphView } from './GraphView';
 import { ConditionPanel } from './ConditionPanel';
 import { CalcPanel } from './CalcPanel';
 import { ContextBar } from './ContextBar';
 import { OpPanel } from './OpPanel';
-import { CompPanel, MultiPanel } from './StatementPanels';
+import { CompPanel, JumpPanel, MultiPanel } from './StatementPanels';
 import { HeapView } from './HeapView';
 import { RecursionTree } from './RecursionTree';
 import type { CallTree } from '../lib/callTree';
@@ -25,6 +25,8 @@ import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphM
 interface Props {
   step: ExecutionStep;
   prev?: ExecutionStep;
+  /** 下一步：break / continue 卡片用來說明接著執行哪一行 */
+  next?: ExecutionStep;
   cellKeys: Record<string, string[]>;
   indexMap: IndexMap;
   /** 最上方卡片欄位的固定高度（px，見 infoSlotHeight）；沒給時卡片直接疊在內容上方 */
@@ -33,6 +35,8 @@ interface Props {
   context?: { stack: boolean; loops: boolean; frameKeys: string[] };
   /** 被 heapq 操作的 list 名稱（見 analyzeHeaps），額外畫成堆積樹 */
   heapNames?: Set<string>;
+  /** 二維格子每一格的身分 key（見 computeGridKeys） */
+  gridKeys?: Record<string, string[][]>;
   /** 遞迴樹（見 buildCallTree）；只在有遞迴的程式傳入 */
   callTree?: { tree: CallTree; index: number; onSeek?: (step: number) => void };
 }
@@ -40,7 +44,7 @@ interface Props {
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context, heapNames, callTree }: Props) {
+export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slotHeight, context, heapNames, callTree }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -157,14 +161,16 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
   const op = step.event === 'line' ? step.op : undefined;
   const multi = step.event === 'line' ? step.multi : undefined;
   const comp = step.event === 'line' ? step.comp : undefined;
+  const jump = step.event === 'line' ? step.jump : undefined;
   const returned = step.event === 'return' ? step.returnValue : undefined;
-  const hasCard = !!(cond || calc || op || multi || comp || returned || step.event === 'exception');
+  const hasCard = !!(cond || calc || op || multi || comp || jump || returned || step.event === 'exception');
   const cards = (
     <>
       {cond && <ConditionPanel key={`cond-${step.stepIndex}`} condition={cond} heap={heap} line={step.lineNumber} />}
       {calc && <CalcPanel key={`calc-${step.stepIndex}`} calc={calc} line={step.lineNumber} />}
       {op && <OpPanel key={`op-${step.stepIndex}`} op={op} line={step.lineNumber} />}
       {multi && <MultiPanel key={`multi-${step.stepIndex}`} multi={multi} line={step.lineNumber} />}
+      {jump && <JumpPanel key={`jump-${step.stepIndex}`} jump={jump} line={step.lineNumber} next={next} />}
       {comp && <CompPanel key={`comp-${step.stepIndex}`} comp={comp} line={step.lineNumber} heap={heap} />}
       {returned && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
@@ -203,6 +209,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
 
       {callTree && <RecursionTree tree={callTree.tree} index={callTree.index} onSeek={callTree.onSeek} />}
       {kinds.has('list') && <LinkedListView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} compared={marks.refs} />}
+      {kinds.has('trie') && <TrieView heap={heap} prevHeap={prevHeap} labels={nodeLabels} />}
       {kinds.has('tree') && <TreeView heap={heap} prevHeap={prevHeap} labels={nodeLabels} trail={trail} compared={marks.refs} />}
       {graphs.map(({ graph, prev: prevGraph }) => (
         <GraphView key={graph.name} graph={graph} prev={prevGraph} overlay={graphOverlay(graph, vars, graphVars)} />
@@ -230,7 +237,7 @@ export function Visualizer({ step, prev, cellKeys, indexMap, slotHeight, context
         </div>
       ))}
       {grids.map(([name, v]) => (
-        <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} compared={gridCellsOf(marks, name)} written={gridCellsOf(writes, name)} />
+        <GridView key={name} name={name} value={v} prev={prevVars?.[name]} marks={gridMarks.get(name) ?? []} compared={gridCellsOf(marks, name)} written={gridCellsOf(writes, name)} keys={gridKeys?.[name]} />
       ))}
       {dicts.map(([name, v]) => (
         <DictView

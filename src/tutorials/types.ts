@@ -41,7 +41,7 @@ export const CATEGORIES: { id: CategoryId; title: L }[] = [
   { id: 'arrays', title: { en: 'Arrays & Pointers', zh: '陣列與指針' } },
   { id: 'hashing', title: { en: 'Hashing', zh: '雜湊' } },
   { id: 'linked-list', title: { en: 'Linked List', zh: '鏈結串列' } },
-  { id: 'tree', title: { en: 'Binary Tree', zh: '二元樹' } },
+  { id: 'tree', title: { en: 'Trees', zh: '樹' } },
   { id: 'stack-queue', title: { en: 'Stack, Queue & Heap', zh: '堆疊、佇列與堆積' } },
   { id: 'graph', title: { en: 'Graph & Grid', zh: '圖與網格' } },
   { id: 'dp', title: { en: 'Dynamic Programming', zh: '動態規劃' } },

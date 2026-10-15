@@ -302,3 +302,133 @@ export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
     </section>
   );
 }
+
+// ───────────────────────────── 字典樹 ─────────────────────────────
+
+const TRIE_X = 46;
+const TRIE_Y = 64;
+const TRIE_NODE = 30;
+const END_FIELDS = /^(is_?end|end|is_?word|word_?end|end_?of_?word|terminal|is_?terminal|is_?leaf|word|count)$/i;
+
+/** 節點是否為單字結尾：is_end / end / is_word 為 True，或存了單字字串、計數 > 0 */
+function isWordEnd(fields: Heap[string]['fields']): boolean {
+  for (const [name, v] of Object.entries(fields)) {
+    if (!END_FIELDS.test(name)) continue;
+    if (v.type === 'bool' && v.value) return true;
+    if (v.type === 'str' && v.value) return true;
+    if (v.type === 'int' && Number(v.value) > 0) return true;
+  }
+  return false;
+}
+
+/** 子節點：children dict 中 (字元, 節點 id)，依字元排序 */
+function trieChildren(heap: Heap, id: string): [string, string][] {
+  const obj = heap[id];
+  for (const v of Object.values(obj.fields)) {
+    if (v.type !== 'dict') continue;
+    const kids = v.entries.flatMap(([k, x]) => (x.type === 'ref' && heap[x.id] && nodeKind(heap[x.id]) === 'trie' ? [[formatCell(k, heap), x.id] as [string, string]] : []));
+    if (kids.length || v.entries.length === 0) return kids.sort((a, b) => a[0].localeCompare(b[0]));
+  }
+  return [];
+}
+
+export function TrieView({ heap, prevHeap, labels }: Props) {
+  const t = useT();
+  const ids = Object.keys(heap).filter((id) => nodeKind(heap[id]) === 'trie');
+  const isChild = new Set(ids.flatMap((id) => trieChildren(heap, id).map(([, c]) => c)));
+  const roots = ids.filter((id) => !isChild.has(id)).sort((a, b) => idNum(a) - idNum(b));
+  const placed: { id: string; x: number; y: number; parent?: string; edge?: string }[] = [];
+  const seen = new Set<string>();
+  let col = 0;
+  let maxDepth = 0;
+  // 葉節點依序佔一格，父節點置中在子節點上方
+  const place = (id: string, depth: number, parent?: string, edge?: string): number => {
+    if (seen.has(id)) return col;
+    seen.add(id);
+    maxDepth = Math.max(maxDepth, depth);
+    const kids = trieChildren(heap, id).filter(([, c]) => !seen.has(c));
+    let x: number;
+    if (!kids.length) x = col++;
+    else {
+      const xs = kids.map(([ch, c]) => place(c, depth + 1, id, ch));
+      x = (xs[0] + xs[xs.length - 1]) / 2;
+    }
+    placed.push({ id, x, y: depth, parent, edge });
+    return x;
+  };
+  for (const root of roots) {
+    place(root, 0);
+    col += 0.5;
+  }
+  if (!placed.length) return null;
+  const pos = new Map(placed.map((p) => [p.id, p]));
+  const width = Math.max(1, col) * TRIE_X + 20;
+  const height = maxDepth * TRIE_Y + TRIE_NODE + 30;
+  const c = (p: { x: number; y: number }) => ({ cx: p.x * TRIE_X + TRIE_NODE / 2 + 10, cy: p.y * TRIE_Y + TRIE_NODE / 2 });
+
+  return (
+    <section data-trie>
+      <Header name={t('trieTitle')} kind={heap[placed[0].id].cls} meta={t('trieMeta', { n: placed.length })} />
+      <div className="scrollbar-thin overflow-x-auto pb-1">
+        <div className="relative" style={{ width, height }}>
+          <svg className="pointer-events-none absolute inset-0 overflow-visible" width={width} height={height}>
+            {placed
+              .filter((p) => p.parent)
+              .map((p) => {
+                const a = c(pos.get(p.parent!)!);
+                const b = c(p);
+                return (
+                  <motion.line
+                    key={`${p.parent}-${p.id}`}
+                    initial={false}
+                    animate={{ x1: a.cx, y1: a.cy, x2: b.cx, y2: b.cy }}
+                    transition={spring}
+                    stroke="#555"
+                    strokeWidth={1.5}
+                  />
+                );
+              })}
+          </svg>
+          {placed.map((p) => {
+            const end = isWordEnd(heap[p.id].fields);
+            const nodeLabels = labels.get(p.id);
+            const isNew = !!prevHeap && !prevHeap[p.id];
+            const becameEnd = end && !!prevHeap?.[p.id] && !isWordEnd(prevHeap[p.id].fields);
+            const accent = nodeLabels?.[0]?.color;
+            return (
+              <motion.div
+                key={p.id}
+                className="absolute top-0 left-0 flex flex-col items-center"
+                style={{ width: TRIE_NODE }}
+                initial={{ opacity: 0, scale: 0.5, x: p.x * TRIE_X + 10, y: p.y * TRIE_Y }}
+                animate={{ opacity: 1, scale: 1, x: p.x * TRIE_X + 10, y: p.y * TRIE_Y }}
+                transition={spring}
+              >
+                <div
+                  className="flex items-center justify-center rounded-full font-mono text-[13px] font-semibold transition-colors duration-300"
+                  style={{
+                    width: TRIE_NODE,
+                    height: TRIE_NODE,
+                    border: `2px solid ${accent ?? (end ? '#2cbb5d' : '#4a4a4a')}`,
+                    // 單字結尾：雙圈
+                    boxShadow: end ? `0 0 0 3px #1e1e1e, 0 0 0 5px #2cbb5d${becameEnd ? ', 0 0 14px #2cbb5d' : ''}` : accent ? `0 0 12px ${accent}55` : 'none',
+                    backgroundColor: isNew ? 'rgba(44,187,93,0.25)' : '#2a2a2a',
+                    color: p.parent ? '#ffa116' : '#8a8a8a',
+                  }}
+                  data-edge={p.edge}
+                  data-end={end || undefined}
+                >
+                  {/* 走到這個節點用的字元畫在節點裡，變數標籤就不會蓋住它 */}
+                  {p.parent ? p.edge : '·'}
+                </div>
+                <div className="relative z-10">
+                  <Labels labels={nodeLabels} />
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}

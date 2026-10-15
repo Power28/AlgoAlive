@@ -264,7 +264,7 @@ async function testCalc(page) {
 }
 
 /** 從教學庫開啟範例並執行，往前走到 selector 的內容包含 needle 為止 */
-async function openAndStepTo(page, topic, example, selector, needle) {
+async function openAndStepTo(page, topic, example, selector, needle, { keepOpen = false } = {}) {
   await page.click('[data-action="library"]');
   await page.waitForSelector(`[data-topic="${topic}"]`);
   await page.click(`[data-topic="${topic}"]`);
@@ -278,7 +278,7 @@ async function openAndStepTo(page, topic, example, selector, needle) {
   const hit = async () => (await text()).toLowerCase().includes(needle.toLowerCase());
   for (let i = 0; i < 80 && !(await hit()); i++) await page.click('[data-action="next"]');
   const result = await text();
-  await page.click('[role="tab"][aria-selected="true"] button');
+  if (!keepOpen) await page.click('[role="tab"][aria-selected="true"] button');
   return result;
 }
 
@@ -386,6 +386,38 @@ async function testStatements(page) {
   record('slice label shows the selected range', slice === 'path[:] → [1, 2]' ? null : `got ${JSON.stringify(slice)}`);
 }
 
+async function testTrieJumpGrid(page) {
+  console.log('Trie, break/continue & grid movement');
+  // 14：flower / flow / flight 建好的字典樹，3 個單字結尾
+  await openAndStepTo(page, 'trie', 'lc14', '[data-trie]', 'trie', { keepOpen: true });
+  await page.click('[data-action="last"]');
+  await sleep(500);
+  const trie = await page.evaluate(() => ({
+    edges: [...document.querySelectorAll('main [data-trie] [data-edge]')].map((e) => e.dataset.edge).sort().join(''),
+    ends: document.querySelectorAll('main [data-trie] [data-end]').length,
+  }));
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('trie view draws every character and marks word ends', trie.edges === 'efghilortw' && trie.ends === 3 ? null : `got ${JSON.stringify(trie)}`);
+
+  // 46：if used[i]: continue
+  const jump = await openAndStepTo(page, 'backtracking', 'lc46', '[data-jump]', 'continue');
+  record('continue card names the loop and the next line', /skip the rest of this pass of "for i in range\(len\(nums\)\)"[\s\S]*back to line 10/.test(jump) ? null : `got ${JSON.stringify(jump)}`);
+
+  // 48：轉置交換時，同一個格子元素移動到新位置
+  await openAndStepTo(page, 'matrix', 'lc48', '[data-multi]', 'swap', { keepOpen: true });
+  const cells = () =>
+    page.evaluate(() => Object.fromEntries([...document.querySelectorAll('main [data-cell]')].map((e) => [e.dataset.cell, [e.innerText, Math.round(e.getBoundingClientRect().x - e.parentElement.getBoundingClientRect().x), Math.round(e.getBoundingClientRect().y - e.parentElement.getBoundingClientRect().y)]])));
+  await sleep(800); // 等格子的進場動畫（scale）結束
+  const before = await cells();
+  await page.click('[data-action="next"]');
+  await sleep(800);
+  const after = await cells();
+  await page.click('[role="tab"][aria-selected="true"] button');
+  const moved = Object.keys(before).filter((k) => after[k] && (after[k][1] !== before[k][1] || after[k][2] !== before[k][2]));
+  const swapped = moved.length === 2 && moved.every((k) => after[k][0] === before[k][0]);
+  record('grid cells move with their values on a swap', swapped ? null : `moved ${JSON.stringify(moved)} — ${JSON.stringify({ before, after })}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -421,6 +453,7 @@ try {
   await testOps(page);
   await testRecursionTree(page);
   await testStatements(page);
+  await testTrieJumpGrid(page);
   await testDemo(page);
   await testExamples(page, expected);
 

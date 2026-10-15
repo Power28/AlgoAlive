@@ -9,7 +9,7 @@ import { Visualizer } from './components/Visualizer';
 import { usePlayback } from './hooks/usePlayback';
 import { BLANK_CALL, BLANK_CODE, tabFromExample, useTabs } from './hooks/useTabs';
 import { useLang, useT } from './i18n';
-import { computeCellKeys } from './lib/cellKeys';
+import { computeCellKeys, computeGridKeys } from './lib/cellKeys';
 import { analyzeHeaps, analyzeIndexing } from './lib/indexing';
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
@@ -53,6 +53,7 @@ export default function App() {
   const trace = run?.trace ?? null;
   const steps = trace?.steps ?? EMPTY_STEPS;
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
+  const gridKeys = useMemo(() => computeGridKeys(steps), [steps]);
   const indexMap = useMemo(() => analyzeIndexing(run?.code ?? ''), [run?.code]);
   // 卡片欄位高度整段執行只算一次，播放時固定
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
@@ -262,7 +263,7 @@ export default function App() {
             {run?.error && <ErrorBox message={run.error} />}
             {error && <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />}
             {step ? (
-              <Visualizer step={step} prev={prevStep} cellKeys={cellKeys[playback.index] ?? {}} indexMap={indexMap}
+              <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
                 callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}

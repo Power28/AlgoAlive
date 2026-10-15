@@ -1,5 +1,5 @@
 import type { ExecutionStep } from '../types';
-import { charItems, isSequence, valueKey } from './pyValue';
+import { charItems, isGrid, isSequence, valueKey } from './pyValue';
 
 /** stepIndex → 變數名 → 每個格子的穩定 key。 */
 export type CellKeyMap = Record<string, string[]>[];
@@ -65,5 +65,37 @@ function matchKeys(prev: { keys: string[]; vals: string[] }, vals: string[], gen
       return prev.keys[best];
     }
     return gen();
+  });
+}
+
+/** stepIndex → grid 變數名 → [列][欄] 每一格的穩定 key */
+export type GridKeyMap = Record<string, string[][]>[];
+
+/**
+ * 二維格子的格子身分：與一維相同的規則套用到攤平後的格子。
+ * 變動的格子只是彼此重新排列（旋轉、轉置、交換）時，key 跟著值走，畫面上就會看到格子移動；
+ * 被覆寫成新值時保留位置 key，只在原地閃爍。
+ */
+export function computeGridKeys(steps: ExecutionStep[]): GridKeyMap {
+  let counter = 0;
+  const gen = () => `g${counter++}`;
+  const last = new Map<string, { shape: number[]; keys: string[]; vals: string[] }>();
+
+  return steps.map((step) => {
+    const map: Record<string, string[][]> = {};
+    for (const [name, v] of Object.entries(step.variables)) {
+      if (!isGrid(v) || v.type !== 'list') continue;
+      const rows = v.items.map((row) => ('items' in row ? row.items : []));
+      const shape = rows.map((r) => r.length);
+      const vals = rows.flat().map(valueKey);
+      const id = `${step.depth}:${step.funcName}:${name}`;
+      const prev = last.get(id);
+      const sameShape = prev && prev.shape.length === shape.length && prev.shape.every((n, i) => n === shape[i]);
+      const flat = prev && sameShape ? matchKeys(prev, vals, gen) : prev ? matchKeys({ keys: prev.keys, vals: prev.vals }, vals, gen) : vals.map(gen);
+      last.set(id, { shape, keys: flat, vals });
+      let k = 0;
+      map[name] = shape.map((n) => flat.slice(k, (k += n)));
+    }
+    return map;
   });
 }

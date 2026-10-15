@@ -18,12 +18,16 @@ from tracer import MAX_STEPS, algoalive_run  # noqa: E402
 # ─────────────── 與 src/lib/pyValue.ts 的 formatPy / formatCell 相同的格式化 ───────────────
 
 GRAPH_FIELDS = re.compile(r"^(neighbors|neighbours|children|adj|adjacent|edges|nbrs)$", re.I)
+TRIE_FIELDS = re.compile(r"^(children|child|next|links|nodes|kids)$", re.I)
 
 
 def node_kind(obj):
     f = obj["fields"]
     if "left" in f or "right" in f:
         return "tree"
+    for name, v in f.items():
+        if v["type"] == "dict" and TRIE_FIELDS.match(name) and all(x["type"] == "ref" for _, x in v["entries"]):
+            return "trie"
     if "next" in f:
         return "list"
     for name, v in f.items():
@@ -117,6 +121,8 @@ def fmt_ref(v, heap):
         while out and out[-1] == "null":
             out.pop()
         return f"[{', '.join(out)}]"
+    if kind == "trie":
+        return obj["cls"]
     if kind == "graph":
         val = obj["fields"].get("val")
         return f"{obj['cls']}({fmt_cell(val) if val else ''})"
@@ -372,6 +378,43 @@ def tracer_cases():
         if got != want:
             return f"expected {want}, got {got}"
 
+    def jump_targets():
+        code = (
+            "def f(grid):\n"
+            "    total = 0\n"
+            "    for row in grid:\n"
+            "        for x in row:\n"
+            "            if x < 0:\n"
+            "                break\n"
+            "            if x == 0:\n"
+            "                continue\n"
+            "            total += x\n"
+            "    return total\n"
+        )
+        r = run(code, "f([[1, 0, 2], [3, -1, 4]])")
+        jumps = [(s["lineNumber"], s["jump"]["kind"], s["jump"]["loopLine"], s["jump"]["loopSrc"]) for s in r["steps"] if s.get("jump")]
+        want = [(8, "continue", 4, "for x in row"), (6, "break", 4, "for x in row")]
+        if jumps != want or r["returnValue"]["value"] != 6:
+            return f"expected {want} returning 6, got {jumps} / {fmt(r['returnValue'])}"
+
+    def trie_init_not_traced():
+        code = (
+            "def build(words):\n"
+            "    root = TrieNode()\n"
+            "    for w in words:\n"
+            "        node = root\n"
+            "        for ch in w:\n"
+            "            node = node.children.setdefault(ch, TrieNode())\n"
+            "        node.is_end = True\n"
+            "    return root\n"
+        )
+        r = run(code, 'build(["ab", "ac"])')
+        names = {f["func"] for s in r["steps"] for f in s.get("stack", [])} | {s.get("funcName") for s in r["steps"] if s.get("funcName")}
+        if names != {"build"}:
+            return f"only build() should be traced, got {names}"
+        if fmt(r["returnValue"], r.get("returnHeap")) != "TrieNode":
+            return f"expected TrieNode, got {fmt(r['returnValue'], r.get('returnHeap'))}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -399,6 +442,8 @@ def tracer_cases():
         ("simultaneous assignment / swap is recorded", multi_assign_swap),
         ("comprehension result grows element by element", comprehension_progress),
         ("slice ranges are recorded", slice_ranges),
+        ("break / continue point at the innermost loop", jump_targets),
+        ("TrieNode() constructor is not traced", trie_init_not_traced),
     ]
 
 

@@ -56,6 +56,8 @@ export interface ExecutionStep {
   slices?: SliceInfo[];
   /** 推導式這一圈的進度 */
   comp?: CompInfo;
+  /** 這一行是 break / continue */
+  jump?: { kind: 'break' | 'continue'; loopLine: number; loopSrc: string };
 }
 
 export interface MultiAssign {

@@ -83,7 +83,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
             step.loops.map((loop, i) => (
               <div key={loop.line} className="flex shrink-0 items-center gap-1.5">
                 {i > 0 && <span className="text-ink-600">›</span>}
-                <LoopChip loop={loop} />
+                <LoopChip loop={loop} jump={step.jump?.loopLine === loop.line ? step.jump.kind : undefined} />
               </div>
             ))
           ) : (
@@ -97,7 +97,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
 
 const MAX_DOTS = 16;
 
-function LoopChip({ loop }: { loop: LoopInfo }) {
+function LoopChip({ loop, jump }: { loop: LoopInfo; jump?: 'break' | 'continue' }) {
   const t = useT();
   const { iteration, total, done } = loop;
   const label = done ? t('loopDone') : total !== undefined ? t('iterOf', { k: iteration, n: total }) : t('iterOpen', { k: iteration });
@@ -140,6 +140,17 @@ function LoopChip({ loop }: { loop: LoopInfo }) {
       <motion.span key={`${iteration}-${done}`} className="font-semibold" initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
         {label}
       </motion.span>
+      {jump && (
+        <motion.span
+          className="rounded px-1 text-[10px] font-bold text-ink-900"
+          style={{ backgroundColor: jump === 'break' ? '#f87171' : '#fbbf24' }}
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+        >
+          {t(jump === 'break' ? 'loopBreak' : 'loopContinue')}
+        </motion.span>
+      )}
     </span>
   );
 }

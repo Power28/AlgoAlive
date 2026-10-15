@@ -61,6 +61,16 @@ class Node:
         return f"Node({self.val})"
 
 
+class TrieNode:
+    # 字典樹節點：children[字元] → 子節點，is_end 標示單字結尾
+    def __init__(self):
+        self.children = {}
+        self.is_end = False
+
+    def __repr__(self):
+        return "TrieNode"
+
+
 def build_graph(adj_list):
     # LeetCode 的鄰接串列（1-indexed）[[2, 4], [1, 3], ...] → 回傳節點 1
     nodes = [Node(i + 1) for i in range(len(adj_list))]
@@ -274,6 +284,7 @@ class _CondAnalyzer:
         self.by_line = {}
         self.calc_by_line = {}
         self.multi_by_line = {}
+        self.jump_by_line = {}
         self.slices_by_line = {}
         self.comp_by_line = {}
         self.compiled = {}
@@ -283,6 +294,7 @@ class _CondAnalyzer:
         except SyntaxError:
             return
         self.tree = tree
+        self._collect_jumps(tree, None)
         for node in ast.walk(tree):
             if not isinstance(node, ast.stmt) or node.lineno in self.by_line or node.lineno in self.calc_by_line:
                 continue
@@ -594,6 +606,50 @@ class _CondAnalyzer:
             if loc:
                 calc["targetLoc"] = loc
         return calc
+
+    # ─────────── break / continue ───────────
+
+    def _collect_jumps(self, node, loop):
+        """記錄每個 break / continue 所屬的最內層迴圈（不跨越函式定義）"""
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                self._collect_jumps(child, None)
+            elif isinstance(child, (ast.For, ast.While)):
+                # else 區塊不算在迴圈內
+                for part in child.body:
+                    self._collect_jumps_stmt(part, child)
+                for part in child.orelse:
+                    self._collect_jumps_stmt(part, loop)
+                self._collect_jumps(child.iter if isinstance(child, ast.For) else child.test, loop)
+            elif isinstance(child, (ast.Break, ast.Continue)) and loop is not None:
+                header = self.code.splitlines()[loop.lineno - 1].strip().rstrip(":")
+                self.jump_by_line[child.lineno] = {
+                    "kind": "break" if isinstance(child, ast.Break) else "continue",
+                    "loopLine": loop.lineno,
+                    "loopSrc": header,
+                }
+            else:
+                self._collect_jumps(child, loop)
+
+    def _collect_jumps_stmt(self, stmt, loop):
+        if isinstance(stmt, (ast.Break, ast.Continue)) and loop is not None:
+            header = self.code.splitlines()[loop.lineno - 1].strip().rstrip(":")
+            self.jump_by_line[stmt.lineno] = {
+                "kind": "break" if isinstance(stmt, ast.Break) else "continue",
+                "loopLine": loop.lineno,
+                "loopSrc": header,
+            }
+        elif isinstance(stmt, (ast.For, ast.While)):
+            for part in stmt.body:
+                self._collect_jumps_stmt(part, stmt)
+            for part in stmt.orelse:
+                self._collect_jumps_stmt(part, loop)
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            self._collect_jumps(stmt, None)
+        else:
+            for child in ast.iter_child_nodes(stmt):
+                if isinstance(child, ast.stmt):
+                    self._collect_jumps_stmt(child, loop)
 
     # ─────────── 同時賦值 a, b = b, a ───────────
 
@@ -1171,6 +1227,9 @@ def algoalive_run(code, call_src):
             multi = conditions.multi(frame, ctx)
             if multi:
                 step["multi"] = multi
+            jump = conditions.jump_by_line.get(frame.f_lineno)
+            if jump:
+                step["jump"] = jump
             slices = conditions.slices(frame, ctx)
             if slices:
                 step["slices"] = slices
@@ -1201,6 +1260,10 @@ def algoalive_run(code, call_src):
             return None
         # build_list / build_tree 建立節點時呼叫到使用者自訂的 __init__，不算在演算法步驟內
         if event == "call" and frame.f_back is not None and frame.f_back.f_code.co_filename == PRELUDE_FILE:
+            return None
+        # __init__ / __repr__ 這類特殊方法（例如 TrieNode() 建立節點）不算演算法步驟
+        name = frame.f_code.co_name
+        if event == "call" and name.startswith("__") and name.endswith("__"):
             return None
         if event == "line":
             raising.discard(id(frame))  # 例外已被 try/except 接住，恢復正常

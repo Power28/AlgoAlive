@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRightLeft, ListPlus } from 'lucide-react';
-import type { CompInfo, Heap, MultiAssign } from '../types';
+import { ArrowRightLeft, CornerUpLeft, ListPlus, LogOut } from 'lucide-react';
+import type { CompInfo, ExecutionStep, Heap, MultiAssign } from '../types';
 import { formatCell } from '../lib/pyValue';
 import { useT } from '../i18n';
 
@@ -136,6 +136,43 @@ export function CompPanel({ comp, line, heap }: { comp: CompInfo; line: number; 
         })}
         <span className="text-ink-400">{close}</span>
       </div>
+    </Card>
+  );
+}
+
+export const BREAK_COLOR = '#f87171';
+export const CONTINUE_COLOR = '#fbbf24';
+
+/** break / continue：跳到哪裡、接著執行哪一行 */
+export function JumpPanel({ jump, line, next }: { jump: NonNullable<ExecutionStep['jump']>; line: number; next?: ExecutionStep }) {
+  const t = useT();
+  const isBreak = jump.kind === 'break';
+  const color = isBreak ? BREAK_COLOR : CONTINUE_COLOR;
+  const Icon = isBreak ? LogOut : CornerUpLeft;
+  let after: string | null = null;
+  if (next) {
+    if (isBreak) after = t('jumpNextBreak', { n: next.lineNumber });
+    else if (next.lineNumber === jump.loopLine) {
+      const loop = next.loops?.find((l) => l.line === jump.loopLine);
+      after = loop?.done ? t('jumpNextDone') : t('jumpNextContinue', { n: jump.loopLine });
+    }
+  }
+  return (
+    <Card color={color} title={jump.kind} line={line} data="data-jump">
+      <motion.div
+        className="flex items-start gap-2 text-sm text-ink-100"
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Icon size={15} className="mt-0.5 shrink-0" style={{ color }} />
+        <span>{t(isBreak ? 'jumpBreak' : 'jumpContinue', { loop: jump.loopSrc })}</span>
+      </motion.div>
+      {after && (
+        <motion.p className="mt-1 pl-6 text-xs text-ink-400" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+          {after}
+        </motion.p>
+      )}
     </Card>
   );
 }

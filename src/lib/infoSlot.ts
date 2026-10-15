@@ -24,6 +24,7 @@ const GATE_EXTRA = 34;
 const OP_CARD = 104;
 const MULTI_CARD = 190;
 const COMP_CARD = 128;
+const JUMP_CARD = 92;
 const CARD_GAP = 12;
 
 function stepCardHeight(step: ExecutionStep): number {
@@ -34,6 +35,7 @@ function stepCardHeight(step: ExecutionStep): number {
       step.op ? OP_CARD : 0,
       step.multi ? MULTI_CARD - (step.multi.swap ? 0 : 22) : 0,
       step.comp ? COMP_CARD : 0,
+      step.jump ? JUMP_CARD : 0,
     ].filter(Boolean);
     return cards.reduce((a, b) => a + b, 0) + Math.max(0, cards.length - 1) * CARD_GAP;
   }

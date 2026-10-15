@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { useL, useT } from '../i18n';
-import { computeCellKeys } from '../lib/cellKeys';
+import { computeCellKeys, computeGridKeys } from '../lib/cellKeys';
 import { analyzeHeaps, analyzeIndexing } from '../lib/indexing';
 import { infoSlotHeight } from '../lib/infoSlot';
 import { contextInfo } from '../lib/context';
@@ -81,6 +81,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   }, [playing, visible, index, last, steps.length]);
 
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
+  const gridKeys = useMemo(() => computeGridKeys(steps), [steps]);
   const indexMap = useMemo(() => analyzeIndexing(example.code), [example.code]);
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
@@ -159,7 +160,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
         <div className="scrollbar-thin h-96 overflow-auto p-3 [overflow-anchor:none] @2xl:h-auto">
           {step ? (
             <div className="origin-top-left">
-              <Visualizer step={step} prev={prev} cellKeys={cellKeys[index] ?? {}} indexMap={indexMap}
+              <Visualizer step={step} prev={prev} next={steps[index + 1]} cellKeys={cellKeys[index] ?? {}} gridKeys={gridKeys[index]} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
                 callTree={
