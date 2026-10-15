@@ -64,6 +64,8 @@ export interface ExecutionStep {
   tryFlow?: TryFlow;
   /** 這一行呼叫的 sum / max / sorted / any… 如何處理每個元素（執行前以唯讀方式算出） */
   builtins?: BuiltinCall[];
+  /** 設計類題目（run_design）：目前是第幾個操作、已完成操作的輸出（LeetCode 寫法） */
+  design?: { index: number; outputs: string[] };
 }
 
 export interface BuiltinCall {
@@ -175,6 +177,8 @@ export interface ContainerOp {
   popped?: string;
   unordered?: boolean;
   size: number;
+  /** b.append(a.pop())：放入的元素是從另一個容器的尾端 / 前端取出來的 */
+  from?: { target: string; end: 'back' | 'front' };
 }
 
 export interface LoopInfo {
@@ -293,4 +297,6 @@ export interface TraceResult {
   returnHeap?: Heap;
   error?: TraceError;
   stdout: string;
+  /** 測試呼叫是 LeetCode 設計題的兩個陣列時：每個操作的寫法 */
+  design?: { ops: string[]; calls: string[] };
 }

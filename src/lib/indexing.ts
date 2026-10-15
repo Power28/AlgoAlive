@@ -35,7 +35,8 @@ function indexVars(expr: string): [string, number | null][] {
  */
 export function analyzeIndexing(code: string): IndexMap {
   const map: IndexMap = new Map();
-  const re = /([A-Za-z_]\w*)\s*\[/g;
+  // self.stack[-1] 也算：設計類題目的狀態以 self.xxx 變數顯示
+  const re = /((?:self\.)?[A-Za-z_]\w*)\s*\[/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(code))) {
     const name = m[1];

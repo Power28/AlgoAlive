@@ -452,6 +452,31 @@ async function testBuiltins(page) {
   record('all() card stops at the first False', /\(6, 5\)[\s\S]*False[\s\S]*stopped here/.test(all) ? null : `got ${JSON.stringify(all)}`);
 }
 
+async function testDesign(page) {
+  console.log('Design problems');
+  // 155：最後一步時，前面的操作都標出輸出，最後一個是目前的操作
+  await openAndStepTo(page, 'design', 'lc155', '[data-design]', 'MinStack()', { keepOpen: true });
+  await page.click('[data-action="last"]');
+  await sleep(400);
+  const ops = () => page.$$eval('main [data-design-op]', (els) => els.map((e) => `${e.dataset.designOp}:${e.innerText.replace(/\s+/g, ' ').trim()}`));
+  const end = await ops();
+  const want = ['done:MinStack() → null', 'done:push(-2) → null', 'done:push(0) → null', 'done:push(-3) → null', 'done:getMin() → -3', 'done:pop() → null', 'done:top() → 0', 'done:getMin() → -2'];
+  record('operation timeline shows every output', JSON.stringify(end) === JSON.stringify(want) ? null : `got ${JSON.stringify(end)}`);
+  // 點「getMin()」（第 5 個）跳到那個操作開始的地方
+  await page.click('main [data-design-op]:nth-child(5)');
+  await sleep(400);
+  const seek = await page.evaluate(() => ({
+    current: document.querySelector('main [data-design-op="current"]')?.innerText.split('\n')[0],
+    stack: document.querySelector('main') ? [...document.querySelectorAll('main section')].some((s) => s.innerText.startsWith('self.mins')) : false,
+  }));
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('clicking an operation jumps to it', seek.current === 'getMin()' && seek.stack ? null : `got ${JSON.stringify(seek)}`);
+
+  // 232：outbox.append(inbox.pop()) 說明元素從哪裡搬到哪裡
+  const move = await openAndStepTo(page, 'design', 'lc232', '[data-op]', 'off the end of self.inbox');
+  record('op card explains moving between stacks', /Take 3 off the end of self\.inbox and put it at the end of self\.outbox/.test(move) ? null : `got ${JSON.stringify(move)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -490,6 +515,7 @@ try {
   await testTrieJumpGrid(page);
   await testTryExcept(page);
   await testBuiltins(page);
+  await testDesign(page);
   await testDemo(page);
   await testExamples(page, expected);
 

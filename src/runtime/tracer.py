@@ -73,6 +73,23 @@ class TrieNode:
         return "TrieNode"
 
 
+_algoalive_design = None
+
+
+def run_design(ops, args):
+    # 設計類題目：ops[0] 建立物件，之後依序呼叫方法；回傳每個操作的輸出（建構子為 None）
+    global _algoalive_design
+    out = []
+    _algoalive_design = {"index": 0, "outputs": out}
+    obj = globals()[ops[0]](*args[0])
+    out.append(None)
+    for k in range(1, len(ops)):
+        _algoalive_design["index"] = k
+        out.append(getattr(obj, ops[k])(*args[k]))
+    _algoalive_design["index"] = len(ops)
+    return out
+
+
 def build_graph(adj_list):
     # LeetCode 的鄰接串列（1-indexed）[[2, 4], [1, 3], ...] → 回傳節點 1
     nodes = [Node(i + 1) for i in range(len(adj_list))]
@@ -264,6 +281,24 @@ _BIT_OPS = {ast.BitAnd: "&", ast.BitOr: "|", ast.BitXor: "^", ast.LShift: "<<", 
 _MAX_BITS_VALUE = 2 ** 32
 
 
+def _var_of(node):
+    """畫面上的變數名稱：x，或設計類題目的 self.x"""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
+        return f"self.{node.attr}"
+    return None
+
+
+def _lookup_var(name, frame):
+    if name.startswith("self."):
+        obj = frame.f_locals.get("self")
+        return getattr(obj, name[5:], None) if obj is not None else None
+    if name in frame.f_locals:
+        return frame.f_locals[name]
+    return frame.f_globals.get(name)
+
+
 class _Unknown(Exception):
     """運算元含有不能安全求值的部分（例如 stack.pop()），或求值時出錯"""
 
@@ -386,17 +421,18 @@ class _CondAnalyzer:
     def _locate(self, node, frame):
         """運算元在畫面上對應的位置：變數、序列的某格、grid 的某格、某個節點"""
         try:
-            if isinstance(node, ast.Name):
-                return {"var": node.id}
+            name = _var_of(node)
+            if name is not None and not (name.startswith("self.") and _is_object(_lookup_var(name, frame))):
+                return {"var": name}
             if isinstance(node, ast.Subscript):
                 idx = self._eval(node.slice, frame)
-                if isinstance(node.value, ast.Name) and isinstance(idx, int):
-                    return {"var": node.value.id, "index": idx}
+                if _var_of(node.value) and isinstance(idx, int):
+                    return {"var": _var_of(node.value), "index": idx}
                 inner = node.value
-                if isinstance(inner, ast.Subscript) and isinstance(inner.value, ast.Name) and isinstance(idx, int):
+                if isinstance(inner, ast.Subscript) and _var_of(inner.value) and isinstance(idx, int):
                     row = self._eval(inner.slice, frame)
                     if isinstance(row, int):
-                        return {"var": inner.value.id, "index": row, "col": idx}
+                        return {"var": _var_of(inner.value), "index": row, "col": idx}
             if isinstance(node, ast.Attribute):
                 obj = self._eval(node.value, frame)
                 if _is_object(obj):
@@ -708,7 +744,7 @@ class _CondAnalyzer:
         for n in ast.walk(stmt):
             if isinstance(n, (ast.FunctionDef, ast.Lambda)) and n is not stmt:
                 continue
-            if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice) and isinstance(n.value, ast.Name):
+            if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice) and _var_of(n.value):
                 found.append(n)
         # 只記錄這一行敘述本身的切片（巢狀區塊各自的行另外記）
         mine = [n for n in found if n.lineno == stmt.lineno]
@@ -727,7 +763,7 @@ class _CondAnalyzer:
                 start, stop, step = slice(*parts).indices(len(seq))
                 result = self._eval(node, frame)
                 out.append({
-                    "var": node.value.id, "src": self._src(node), "start": start, "stop": stop, "step": step,
+                    "var": _var_of(node.value), "src": self._src(node), "start": start, "stop": stop, "step": step,
                     "display": self._result_short(result),
                 })
             except (_Unknown, TypeError, ValueError):
@@ -835,13 +871,15 @@ class _OpAnalyzer:
         if not isinstance(call, ast.Call):
             return None
         func = call.func
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-            if func.value.id == "heapq" and func.attr in _HEAPQ_OPS and call.args and isinstance(call.args[0], ast.Name):
-                return func.attr, call.args[0].id, call.args[1:]
-            if func.attr in _METHOD_OPS:
-                return _METHOD_OPS[func.attr], func.value.id, call.args
-        if isinstance(func, ast.Name) and func.id in _HEAPQ_OPS and call.args and isinstance(call.args[0], ast.Name):
-            return func.id, call.args[0].id, call.args[1:]
+        first = _var_of(call.args[0]) if call.args else None
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "heapq":
+            if func.attr in _HEAPQ_OPS and first:
+                return func.attr, first, call.args[1:]
+            return None
+        if isinstance(func, ast.Attribute) and _var_of(func.value) and func.attr in _METHOD_OPS:
+            return _METHOD_OPS[func.attr], _var_of(func.value), call.args
+        if isinstance(func, ast.Name) and func.id in _HEAPQ_OPS and first:
+            return func.id, first, call.args[1:]
         return None
 
     def _op_of(self, stmt):
@@ -849,12 +887,12 @@ class _OpAnalyzer:
         # d[k] = v、del d[k]（只算 dict；list 的 nums[i] = x 交給一般賦值）
         if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
             t = stmt.targets[0]
-            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
-                return {"kind": "setitem", "target": t.value.id, "key": t.slice, "value": stmt.value, "src": src}
+            if isinstance(t, ast.Subscript) and _var_of(t.value):
+                return {"kind": "setitem", "target": _var_of(t.value), "key": t.slice, "value": stmt.value, "src": src}
         if isinstance(stmt, ast.Delete) and len(stmt.targets) == 1:
             t = stmt.targets[0]
-            if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
-                return {"kind": "delitem", "target": t.value.id, "key": t.slice, "src": src}
+            if isinstance(t, ast.Subscript) and _var_of(t.value):
+                return {"kind": "delitem", "target": _var_of(t.value), "key": t.slice, "src": src}
         value = getattr(stmt, "value", None)
         if not isinstance(stmt, (ast.Expr, ast.Assign, ast.AnnAssign, ast.Return)) or value is None:
             return None
@@ -877,6 +915,19 @@ class _OpAnalyzer:
         except Exception:
             return None
 
+    def _moved(self, node, frame):
+        """node 是不帶參數的 x.pop() / x.popleft()（x 為 list / deque 且非空）時：(會取出的值, 來源說明)"""
+        match = self._match_call(node)
+        if not match or match[0] not in ("pop", "popleft") or match[2]:
+            return None
+        source = _lookup_var(match[1], frame)
+        if not isinstance(source, (list, collections.deque)) or not source:
+            return None
+        if match[0] == "popleft" and not isinstance(source, collections.deque):
+            return None
+        front = match[0] == "popleft"
+        return (source[0] if front else source[-1]), {"target": match[1], "end": "front" if front else "back"}
+
     def _arg(self, node, frame):
         try:
             return self.analyzer._eval(node, frame), True
@@ -885,9 +936,7 @@ class _OpAnalyzer:
 
     def _evaluate(self, spec, frame, ctx):
         a = self.analyzer
-        container = frame.f_locals.get(spec["target"])
-        if container is None and spec["target"] in frame.f_globals:
-            container = frame.f_globals[spec["target"]]
+        container = _lookup_var(spec["target"], frame)
         kind = spec["kind"]
         if isinstance(container, collections.deque):
             ckind = "deque"
@@ -913,6 +962,12 @@ class _OpAnalyzer:
         args = []
         for node in spec.get("args", []):
             value, known = self._arg(node, frame)
+            if not known and kind in ("push", "pushleft") and len(spec["args"]) == 1:
+                # outbox.append(inbox.pop())：把一個容器取出的元素放進另一個；取出的值可以唯讀算出
+                moved = self._moved(node, frame)
+                if moved is not None:
+                    value, op["from"] = moved
+                    known = True
             if not known:
                 return None  # 參數含有無法安全求值的部分，就不預先說明
             args.append(value)
@@ -1416,11 +1471,11 @@ class _LoopTracker:
     @staticmethod
     def _seq_name(iter_node):
         """for x in nums / for i, x in enumerate(nums) 中被走訪的序列名稱"""
-        if isinstance(iter_node, ast.Name):
-            return iter_node.id
+        if _var_of(iter_node):
+            return _var_of(iter_node)
         if (isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name)
-                and iter_node.func.id == "enumerate" and iter_node.args and isinstance(iter_node.args[0], ast.Name)):
-            return iter_node.args[0].id
+                and iter_node.func.id == "enumerate" and iter_node.args and _var_of(iter_node.args[0])):
+            return _var_of(iter_node.args[0])
         return None
 
     def comp_loop(self, frame, comp):
@@ -1655,7 +1710,15 @@ class _TryTracker:
 def _visible_locals(frame):
     for name, value in frame.f_locals.items():
         # ".0" 之類是 comprehension / generator 的內部迭代器變數
-        if name.startswith("__") or name.startswith(".") or name == "self":
+        if name.startswith("__") or name.startswith("."):
+            continue
+        if name == "self":
+            # self 本身不顯示；它的屬性（設計類題目的 self.stack、self.cache…）當成變數 self.xxx 顯示
+            attrs = getattr(value, "__dict__", None)
+            if isinstance(attrs, dict):
+                for attr, v in list(attrs.items()):
+                    if not attr.startswith("__") and not isinstance(v, _SKIP_TYPES):
+                        yield f"self.{attr}", v
             continue
         if isinstance(value, _SKIP_TYPES):
             continue
@@ -1702,6 +1765,52 @@ def _error_line(exc):
     return line
 
 
+def _design_call(call_src, ns):
+    """LeetCode 設計題的測資：["MinStack","push",…] 與 [[],[-2],…]（兩行、逗號隔開或直接相連）"""
+    try:
+        tree = ast.parse(call_src.strip(), INPUT_FILE, "exec")
+    except SyntaxError:
+        return None
+    body = tree.body
+    pair = None
+    if len(body) == 2 and all(isinstance(b, ast.Expr) and isinstance(b.value, ast.List) for b in body):
+        pair = (body[0].value, body[1].value)
+    elif len(body) == 1 and isinstance(body[0], ast.Expr):
+        v = body[0].value
+        if isinstance(v, ast.Tuple) and len(v.elts) == 2 and all(isinstance(e, ast.List) for e in v.elts):
+            pair = tuple(v.elts)
+        elif isinstance(v, ast.Subscript) and isinstance(v.value, ast.List):
+            # 兩行貼進單行輸入框時，換行被吃掉變成 [..][..]；第二組方括號裡的 [a], [b] 會被解析成 tuple
+            inner = v.slice
+            if isinstance(inner, ast.Tuple):
+                inner = ast.List(elts=inner.elts, ctx=ast.Load())
+            elif isinstance(inner, ast.List) and len(v.value.elts) == 1:
+                inner = ast.List(elts=[inner], ctx=ast.Load())  # 只有建構子："[\"Cls\"][[]]"
+            if isinstance(inner, ast.List):
+                pair = (v.value, inner)
+    if pair is None:
+        return None
+    ops_node, args_node = pair
+    if not ops_node.elts or not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in ops_node.elts):
+        return None
+    ops = [e.value for e in ops_node.elts]
+    if len(args_node.elts) != len(ops) or not isinstance(ns.get(ops[0]), type):
+        return None
+    args = eval(compile(ast.fix_missing_locations(ast.Expression(args_node)), INPUT_FILE, "eval"), ns)  # null / true / false 由 prelude 定義
+    if not all(isinstance(a, list) for a in args):
+        return None
+    return ops, args
+
+
+def _leet(value):
+    """LeetCode 的寫法：null / true / false、字串用雙引號"""
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = _short_value(value, None)
+    return text if len(text) <= 24 else text[:23] + "…"
+
+
 def algoalive_run(code, call_src):
     steps = []
     stdout = io.StringIO()
@@ -1732,6 +1841,9 @@ def algoalive_run(code, call_src):
         }
         if stack_refs:
             step["stackRefs"] = stack_refs
+        design = ns.get("_algoalive_design")
+        if design is not None:
+            step["design"] = {"index": design["index"], "outputs": [_leet(v) for v in design["outputs"]]}
         if ret is not no_value:
             step["returnValue"] = _ser(ret, ctx)
         stack = _LoopTracker.stack(frame, ctx)
@@ -1792,12 +1904,16 @@ def algoalive_run(code, call_src):
         if frame.f_code.co_filename != USER_FILE:
             return None
         # build_list / build_tree 建立節點時呼叫到使用者自訂的 __init__，不算在演算法步驟內
-        if event == "call" and frame.f_back is not None and frame.f_back.f_code.co_filename == PRELUDE_FILE:
+        caller = frame.f_back
+        if event == "call" and caller is not None and caller.f_code.co_filename == PRELUDE_FILE \
+                and caller.f_code.co_name.startswith("build_"):
             return None
-        # __init__ / __repr__ 這類特殊方法（例如 TrieNode() 建立節點）不算演算法步驟
+        # __repr__ / __lt__ 這類特殊方法不算演算法步驟；__init__ 只在被測試呼叫 / run_design 直接建立時追蹤
+        # （設計類題目的建構子），演算法中途建立節點（例如 insert 裡的 TrieNode()）則不追蹤
         name = frame.f_code.co_name
         if event == "call" and name.startswith("__") and name.endswith("__"):
-            return None
+            if name != "__init__" or (caller is not None and caller.f_code.co_filename == USER_FILE):
+                return None
         # 產生器運算式 (x for x in …) 的內部：逐元素的過程由內建函式卡片說明（sum / any / all…），
         # 不另外產生步驟；否則 all() 提早結束時關閉產生器的 GeneratorExit 也會被當成例外
         if event == "call" and name == "<genexpr>":
@@ -1833,18 +1949,42 @@ def algoalive_run(code, call_src):
         exec(compile(PRELUDE, PRELUDE_FILE, "exec"), ns)
         # 1) 定義使用者函式（不追蹤 module 層級）
         exec(compile(code, USER_FILE, "exec"), ns)
-        # 2) 編譯測試呼叫：單一運算式用 eval，否則用 exec
-        try:
-            call_code = compile(call_src, INPUT_FILE, "eval")
-            is_expr = True
-        except SyntaxError:
-            call_code = compile(call_src, INPUT_FILE, "exec")
-            is_expr = False
-        sys.settrace(tracer)
-        try:
-            value = eval(call_code, ns) if is_expr else exec(call_code, ns)
-        finally:
-            sys.settrace(None)
+        # 2) 編譯測試呼叫：設計題的兩個陣列交給 run_design；單一運算式用 eval，否則用 exec
+        design = _design_call(call_src, ns)
+        if design is not None:
+            ops, args = design
+            result["design"] = {"ops": ops, "calls": [
+                f"{op}({', '.join(_leet(a) for a in arg)})" for op, arg in zip(ops, args)
+            ]}
+            sys.settrace(tracer)
+            try:
+                value = ns["run_design"](ops, args)
+            finally:
+                sys.settrace(None)
+            if steps:
+                # 最後補一步：所有操作都做完，回傳值是每個操作的輸出（LeetCode 的輸出格式）
+                ctx = _Ctx(registry)
+                final = {k: v for k, v in steps[-1].items() if k in ("lineNumber", "funcName", "depth", "variables", "stdout", "heap", "stackRefs")}
+                final.update({
+                    "stepIndex": len(steps), "event": "return", "returnValue": _ser(value, ctx),
+                    "design": {"index": len(ops), "outputs": [_leet(v) for v in value]},
+                })
+                extra_heap = ctx.drain()
+                if extra_heap:
+                    final["heap"] = {**final.get("heap", {}), **extra_heap}
+                steps.append(final)
+        else:
+            try:
+                call_code = compile(call_src, INPUT_FILE, "eval")
+                is_expr = True
+            except SyntaxError:
+                call_code = compile(call_src, INPUT_FILE, "exec")
+                is_expr = False
+            sys.settrace(tracer)
+            try:
+                value = eval(call_code, ns) if is_expr else exec(call_code, ns)
+            finally:
+                sys.settrace(None)
         ctx = _Ctx(registry)
         result["returnValue"] = _ser(value, ctx)
         heap = ctx.drain()

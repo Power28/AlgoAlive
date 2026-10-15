@@ -62,7 +62,9 @@ export function OpPanel({ op, line }: { op: ContainerOp; line: number }) {
     key: op.key ?? '?',
     popped: op.popped ?? '?',
   };
-  const sentence = t(sentenceKey(op), params);
+  const sentence = op.from
+    ? t(op.from.end === 'front' ? 'opMoveFront' : 'opMoveBack', { ...params, from: op.from.target, to: t(op.kind === 'pushleft' ? 'opEndFront' : 'opEndBack') })
+    : t(sentenceKey(op), params);
   const assign = op.assignTo && !op.empty && !op.missing && op.display !== undefined ? t('opAssign', { assign: op.assignTo }) : '';
   const Icon = PUT_KINDS.has(op.kind) ? ArrowDownToLine : TAKE_KINDS.has(op.kind) ? ArrowUpFromLine : Layers;
   const warn = op.empty || (op.missing && op.kind !== 'discard');

@@ -18,6 +18,7 @@ import { OpPanel } from './OpPanel';
 import { CompPanel, JumpPanel, MultiPanel } from './StatementPanels';
 import { ExcPanel, TryPanel } from './TryPanels';
 import { BuiltinPanel } from './BuiltinPanel';
+import { DesignTimeline, type DesignInfo } from './DesignTimeline';
 import { HeapView } from './HeapView';
 import { RecursionTree } from './RecursionTree';
 import type { CallTree } from '../lib/callTree';
@@ -41,12 +42,14 @@ interface Props {
   gridKeys?: Record<string, string[][]>;
   /** 遞迴樹（見 buildCallTree）；只在有遞迴的程式傳入 */
   callTree?: { tree: CallTree; index: number; onSeek?: (step: number) => void };
+  /** 設計類題目的操作順序 */
+  design?: DesignInfo;
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slotHeight, context, heapNames, callTree }: Props) {
+export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slotHeight, context, heapNames, callTree, design }: Props) {
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -180,7 +183,9 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
       {comp && <CompPanel key={`comp-${step.stepIndex}`} comp={comp} line={step.lineNumber} heap={heap} />}
       {returned && (
         <Banner tone="ok" icon={<CornerDownLeft size={16} />}>
-          <span className="text-ink-300">{t('returned', { f: step.funcName })}</span>
+          <span className="text-ink-300">
+            {design && (step.design?.index ?? 0) >= design.calls.length ? t('designOutput') : t('returned', { f: step.funcName })}
+          </span>
           <code className="font-semibold" data-return>{formatPy(returned, heap)}</code>
         </Banner>
       )}
@@ -196,6 +201,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
   return (
     <HeapContext.Provider value={heap}>
     <div className="flex flex-col gap-6">
+      {design && <DesignTimeline design={design} step={step} />}
       {context && (
         <ContextBar step={step} heap={heap} showStack={context.stack} showLoops={context.loops} frameKeys={context.frameKeys} />
       )}

@@ -5,7 +5,8 @@ import { computeCellKeys, computeGridKeys } from '../lib/cellKeys';
 import { analyzeHeaps, analyzeIndexing } from '../lib/indexing';
 import { infoSlotHeight } from '../lib/infoSlot';
 import { contextInfo } from '../lib/context';
-import { buildCallTree, showCallTree } from '../lib/callTree';
+import { buildCallTree, hasRecursion, showCallTree } from '../lib/callTree';
+import { designStarts } from './DesignTimeline';
 import { runner } from '../runtime/runner';
 import type { Example, Tutorial } from '../tutorials';
 import type { TraceResult } from '../types';
@@ -88,8 +89,11 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   const heapNames = useMemo(() => analyzeHeaps(example.code), [example.code]);
   const callTree = useMemo(() => {
     const tree = buildCallTree(steps);
+    if (trace?.design && !hasRecursion(tree)) return null;
     return showCallTree(tree) ? tree : null;
-  }, [steps]);
+  }, [steps, trace?.design]);
+  const designCalls = trace?.design?.calls;
+  const starts = useMemo(() => (designCalls ? designStarts(steps, designCalls.length) : []), [steps, designCalls]);
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
@@ -163,6 +167,18 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
               <Visualizer step={step} prev={prev} next={steps[index + 1]} cellKeys={cellKeys[index] ?? {}} gridKeys={gridKeys[index]} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
+                design={
+                  designCalls
+                    ? {
+                        calls: designCalls,
+                        starts,
+                        onSeek: (i) => {
+                          setIndex(i);
+                          setPlaying(false);
+                        },
+                      }
+                    : undefined
+                }
                 callTree={
                   callTree
                     ? {

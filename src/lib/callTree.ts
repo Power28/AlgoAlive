@@ -108,6 +108,13 @@ export function buildCallTree(steps: ExecutionStep[]): CallTree {
 }
 
 /** 有遞迴（同一個函式被呼叫兩次以上）或至少三次呼叫時才顯示遞迴樹 */
+const funcOf = (n: CallNode) => n.label.slice(0, n.label.indexOf('('));
+
+/** 有函式呼叫自己（真正的遞迴） */
+export function hasRecursion(tree: CallTree): boolean {
+  return tree.nodes.some((n) => n.parent !== null && funcOf(tree.nodes[n.parent]) === funcOf(n));
+}
+
 export function showCallTree(tree: CallTree): boolean {
   if (tree.nodes.length < 3) return false;
   const counts = new Map<string, number>();

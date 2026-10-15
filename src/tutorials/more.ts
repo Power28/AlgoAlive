@@ -349,4 +349,134 @@ for i, x in enumerate(nums):
       },
     ],
   },
+  {
+    id: 'design',
+    category: 'techniques',
+    title: { en: 'Design Problems', zh: '設計類題目' },
+    tagline: {
+      en: 'Implement a class whose methods are called in a given order; the state lives in self between calls.',
+      zh: '實作一個類別，題目會依序呼叫它的方法；每次呼叫之間的狀態都存在 self 上。',
+    },
+    whenToUse: [
+      { en: 'Problems that start with "Design…" / "Implement…": MinStack, LRU Cache, Trie, queues from stacks.', zh: '題目以「設計……」「實作……」開頭：最小堆疊、LRU 快取、字典樹、用堆疊實作佇列。' },
+      { en: 'The input is two arrays: the method names and the arguments of each call.', zh: '測資是兩個陣列：方法名稱，以及每次呼叫的參數。' },
+    ],
+    idea: [
+      { en: 'Decide what `__init__` stores in self so that every method stays fast.', zh: '先決定 `__init__` 要在 self 上存哪些資料，讓每個方法都夠快。' },
+      { en: 'Paste LeetCode\'s two arrays as the test call — AlgoAlive creates the object, calls each method in order and returns the outputs.', zh: '把 LeetCode 的兩個陣列直接貼到測試呼叫——AlgoAlive 會建立物件、依序呼叫每個方法，並回傳每個操作的輸出。' },
+      { en: 'Often a second structure keeps extra information up to date (the current minimum, the usage order…).', zh: '常見做法是多維護一個結構來隨時更新額外資訊（目前的最小值、使用順序……）。' },
+    ],
+    template: `class MyStructure:
+    def __init__(self):
+        self.data = []
+
+    def add(self, x: int) -> None:
+        self.data.append(x)
+
+# 測試呼叫：
+# ["MyStructure", "add", "add"], [[], [1], [2]]`,
+    complexity: { time: 'per method, often O(1)', space: 'O(n)', note: { en: 'Each method is judged on its own cost.', zh: '每個方法各自計算成本。' } },
+    pitfalls: [
+      { en: 'Forgetting `self.` — a plain local variable disappears when the method returns.', zh: '忘了寫 `self.`——一般的區域變數在方法結束後就消失了。' },
+      { en: 'Keeping the helper structure in sync on every operation (e.g. pop must also update the minimum).', zh: '每個操作都要同步更新輔助結構（例如 pop 也要更新最小值）。' },
+    ],
+    examples: [
+      {
+        id: 'lc155',
+        number: 155,
+        title: { en: 'Min Stack', zh: '最小堆疊' },
+        difficulty: 'medium',
+        note: {
+          en: '`self.mins` only grows when a new minimum arrives, so its top is always the current minimum.',
+          zh: '`self.mins` 只在出現新的最小值時才放入，所以它的頂端永遠是目前的最小值。',
+        },
+        code: `class MinStack:
+    def __init__(self):
+        self.stack = []
+        self.mins = []
+
+    def push(self, val: int) -> None:
+        self.stack.append(val)
+        if not self.mins or val <= self.mins[-1]:
+            self.mins.append(val)
+
+    def pop(self) -> None:
+        val = self.stack.pop()
+        if val == self.mins[-1]:
+            self.mins.pop()
+
+    def top(self) -> int:
+        return self.stack[-1]
+
+    def getMin(self) -> int:
+        return self.mins[-1]
+`,
+        call: '["MinStack", "push", "push", "push", "getMin", "pop", "top", "getMin"], [[], [-2], [0], [-3], [], [], [], []]',
+        expected: '[None, None, None, None, -3, None, 0, -2]',
+      },
+      {
+        id: 'lc232',
+        number: 232,
+        title: { en: 'Implement Queue using Stacks', zh: '用堆疊實作佇列' },
+        difficulty: 'easy',
+        note: {
+          en: 'Only when `outbox` is empty, pour everything from `inbox` into it — the order flips, so the oldest item ends up on top.',
+          zh: '只有 `outbox` 空了才把 `inbox` 全部倒過去——順序會反過來，最早放入的就到了頂端。',
+        },
+        code: `class MyQueue:
+    def __init__(self):
+        self.inbox = []
+        self.outbox = []
+
+    def push(self, x: int) -> None:
+        self.inbox.append(x)
+
+    def pop(self) -> int:
+        self.peek()
+        return self.outbox.pop()
+
+    def peek(self) -> int:
+        if not self.outbox:
+            while self.inbox:
+                self.outbox.append(self.inbox.pop())
+        return self.outbox[-1]
+
+    def empty(self) -> bool:
+        return not self.inbox and not self.outbox
+`,
+        call: '["MyQueue", "push", "push", "push", "peek", "pop", "push", "pop", "empty"], [[], [1], [2], [3], [], [], [4], [], []]',
+        expected: '[None, None, None, None, 1, 1, None, 2, False]',
+      },
+      {
+        id: 'lc146',
+        number: 146,
+        title: { en: 'LRU Cache', zh: 'LRU 快取' },
+        difficulty: 'medium',
+        note: {
+          en: 'The OrderedDict keeps keys from least to most recently used: `move_to_end` marks a key as fresh, `popitem(last=False)` evicts the stalest.',
+          zh: 'OrderedDict 依「最久沒用 → 最近使用」排列：`move_to_end` 把 key 標成最新，`popitem(last=False)` 淘汰最久沒用的。',
+        },
+        code: `class LRUCache:
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.cache = OrderedDict()
+
+    def get(self, key: int) -> int:
+        if key not in self.cache:
+            return -1
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def put(self, key: int, value: int) -> None:
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+`,
+        call: '["LRUCache", "put", "put", "get", "put", "get", "put", "get", "get", "get"], [[2], [1, 1], [2, 2], [1], [3, 3], [2], [4, 4], [1], [3], [4]]',
+        expected: '[None, None, None, 1, None, -1, None, -1, 3, 4]',
+      },
+    ],
+  },
 ];

@@ -518,6 +518,47 @@ def tracer_cases():
         if cards or r["returnValue"]["value"] != 6:
             return f"iterators, short-circuited calls and shadowed names must not be pre-evaluated: {cards} / {fmt(r['returnValue'])}"
 
+    def design_problem():
+        code = (
+            "class Node:\n"
+            "    def __init__(self, val):\n"
+            "        self.val = val\n"
+            "\n"
+            "class Box:\n"
+            "    def __init__(self, cap):\n"
+            "        self.items = []\n"
+            "        self.cap = cap\n"
+            "\n"
+            "    def add(self, x):\n"
+            "        node = Node(x)\n"
+            "        self.items.append(node.val)\n"
+            "\n"
+            "    def size(self):\n"
+            "        return len(self.items)\n"
+        )
+        # LeetCode 的兩個陣列：兩行、逗號隔開、或換行被吃掉而直接相連
+        for call in ('["Box", "add", "add", "size"]\n[[2], [5], [null], []]',
+                     '["Box", "add", "add", "size"], [[2], [5], [null], []]',
+                     '["Box","add","add","size"][[2],[5],[null],[]]'):
+            r = run(code, call)
+            if r.get("error") or fmt(r["returnValue"]) != "[None, None, None, 2]":
+                return f"{call!r}: expected [None, None, None, 2], got {r.get('error') or fmt(r['returnValue'])}"
+        if r.get("design", {}).get("calls") != ["Box(2)", "add(5)", "add(null)", "size()"]:
+            return f"unexpected operation list {r.get('design')}"
+        funcs = [s["funcName"] for s in r["steps"] if s.get("entered")]
+        if funcs != ["__init__", "add", "add", "size"]:
+            return f"the design class __init__ is traced, Node() inside a method is not: {funcs}"
+        indexes = sorted({s["design"]["index"] for s in r["steps"]})
+        last = r["steps"][-1]
+        # 最後補上的一步：所有操作都做完，回傳每個操作的輸出
+        if indexes != [0, 1, 2, 3, 4] or last["design"]["outputs"] != ["null", "null", "null", "2"] or last["event"] != "return":
+            return f"unexpected per-step progress {indexes} / {last['design']}"
+        if fmt(last["variables"].get("self.items")) != "[5, None]" or "self" in last["variables"]:
+            return f"self attributes should show as self.xxx: {list(last['variables'])}"
+        ops = [s["op"]["target"] for s in r["steps"] if s.get("op")]
+        if ops != ["self.items", "self.items"]:
+            return f"self.items.append should be a container op, got {ops}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -551,6 +592,7 @@ def tracer_cases():
         ("finally re-raises and an uncaught exception is not a return", finally_reraise),
         ("built-in calls show how each item is processed", builtin_calls),
         ("built-in cards never consume iterators or run skipped calls", builtin_calls_are_safe),
+        ("design problems run from LeetCode's two arrays", design_problem),
     ]
 
 
