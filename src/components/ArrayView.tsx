@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import type { PyValue } from '../types';
+import type { PyValue, SliceInfo } from '../types';
 import { formatCell, formatPy, valueKey } from '../lib/pyValue';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
 import { useHeap } from '../lib/heapContext';
@@ -13,6 +13,8 @@ const POINTER_ROW = 22;
 export const STR_COLOR = '#ce9178';
 
 const spring = { type: 'spring', stiffness: 420, damping: 34 } as const;
+/** 切片範圍的顏色 */
+export const SLICE_COLOR = '#818cf8';
 
 interface Props {
   name: string;
@@ -31,9 +33,11 @@ interface Props {
   written?: Set<number>;
   /** 整個序列被重新賦值（例如 dp = [0] * n） */
   wholeWritten?: boolean;
+  /** 這一行對這個序列做的切片 */
+  slices?: SliceInfo[];
 }
 
-export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten }: Props) {
+export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten, slices = [] }: Props) {
   const heap = useHeap();
   const n = items.length;
   // 格子寬度依最長內容調整（例如 BFS 佇列中的座標 tuple），整列統一寬度才能對齊指針
@@ -67,6 +71,13 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
   for (const p of pointers) if (!colorAt.has(p.index)) colorAt.set(p.index, p.color);
 
   const width = (n + (hasOverflowSlot ? 1 : 0)) * STEP;
+  // 切片：連續範圍畫成一段框；有間隔（[::2]、[::-1]）的個別標出被選到的格子
+  const sliceBands = slices.filter((sl) => sl.step === 1 && sl.stop > sl.start);
+  const slicePicked = new Set<number>();
+  for (const sl of slices) {
+    if (sl.step === 1) continue;
+    for (let i = sl.start; sl.step > 0 ? i < sl.stop : i > sl.stop; i += sl.step) if (i >= 0 && i < n) slicePicked.add(i);
+  }
   // 只在格子順序改變（swap / insert / pop）時才做 layout 動畫；
   // 上方插入 return 橫幅等造成整塊位移時，不應讓格子看起來在「移動」
   const order = keys.join(',');
@@ -76,6 +87,17 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
       <Header name={name} kind={kind} meta={`len ${n + (truncated ?? 0)}`} />
       <div className="scrollbar-thin overflow-x-auto pb-1">
         <div className="relative px-1 pt-1" style={{ width: Math.max(width, STEP) + 8 }}>
+          {sliceBands.map((sl) => (
+            <motion.div
+              key={`slice-${sl.src}`}
+              className="absolute rounded-lg border-2 border-dashed"
+              // 與視窗範圍相同的幾何：從第 start 格框到第 stop - 1 格
+              style={{ borderColor: SLICE_COLOR, backgroundColor: `${SLICE_COLOR}14`, height: CELL + 8, left: 4, top: 3 }}
+              initial={{ opacity: 0, x: sl.start * STEP, width: (Math.min(sl.stop, n) - 1 - sl.start) * STEP + CELL + 8 }}
+              animate={{ opacity: 1, x: sl.start * STEP, width: (Math.min(sl.stop, n) - 1 - sl.start) * STEP + CELL + 8 }}
+              transition={{ duration: 0.2 }}
+            />
+          ))}
           {/* 滑動視窗 / 雙指針夾住的範圍 */}
           {windows.map((w) => (
             <motion.div
@@ -108,7 +130,9 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
                     fontSize: CELL > MIN_CELL ? 13 : text.length > 4 ? 11 : 15,
                     borderColor: accent ?? '#3e3e3e',
                     color: item.type === 'str' ? STR_COLOR : 'inherit',
-                    ...markOutline(!!compared?.has(i), !!written?.has(i)),
+                    ...(slicePicked.has(i) && !compared?.has(i) && !written?.has(i)
+                      ? { outline: `2px dashed ${SLICE_COLOR}`, outlineOffset: 3 }
+                      : markOutline(!!compared?.has(i), !!written?.has(i))),
                     // motion 元件不會清掉變成 undefined 的 style，必須明確給 'none'
                     boxShadow: accent ? `0 0 0 1px ${accent}55, 0 0 14px ${accent}33` : 'none',
                   }}
@@ -166,6 +190,20 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
           </div>
         </div>
       </div>
+      {slices.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
+          {slices.map((sl) => (
+            <span
+              key={sl.src}
+              className="rounded px-1.5 py-px font-mono text-[11px]"
+              style={{ color: SLICE_COLOR, backgroundColor: `${SLICE_COLOR}1f` }}
+              data-slice
+            >
+              {sl.src} → {sl.display}
+            </span>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

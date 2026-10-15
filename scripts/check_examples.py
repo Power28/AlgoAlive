@@ -344,6 +344,34 @@ def tracer_cases():
         if not op or not op.get("empty") or (r.get("error") or {}).get("type") != "IndexError":
             return f"pop on an empty list should be flagged before the IndexError, got {op}"
 
+    def multi_assign_swap():
+        r = run("def f(nums):\n    nums[0], nums[2] = nums[2], nums[0]\n    a, b = 1, len(nums)\n    return nums\n", "f([5, 6, 7])")
+        multis = [s["multi"] for s in r["steps"] if s.get("multi")]
+        if len(multis) != 2:
+            return f"expected 2 simultaneous assignments, got {len(multis)}"
+        swap, plain = multis
+        got = [(p["target"], p["display"], p.get("targetLoc")) for p in swap["pairs"]]
+        want = [("nums[0]", "7", {"var": "nums", "index": 0}), ("nums[2]", "5", {"var": "nums", "index": 2})]
+        if not swap["swap"] or got != want or plain["swap"] or [p["display"] for p in plain["pairs"]] != ["1", "3"]:
+            return f"unexpected multi-assign data: {swap} / {plain}"
+        if any("calc" in s for s in r["steps"] if s.get("multi")):
+            return "a simultaneous assignment should not also show a calculation card"
+
+    def comprehension_progress():
+        r = run("def g(nums):\n    sq = [x * x for x in nums if x > 1]\n    return sq\n", "g([1, 2, 3])")
+        comps = [s["comp"] for s in r["steps"] if s.get("comp")]
+        got = [(c["count"], c.get("kept"), [i["value"] for i in c["result"]["items"]]) for c in comps]
+        want = [(0, None, []), (1, False, []), (2, True, [4]), (3, True, [4, 9])]
+        if got != want:
+            return f"expected {want}, got {got}"
+
+    def slice_ranges():
+        r = run("def h(s, i, j, nums):\n    t = s[i:j]\n    u = nums[::-1]\n    return t\n", "h('hello', 1, 3, [1, 2, 3])")
+        got = [(x["var"], x["start"], x["stop"], x["step"], x["display"]) for s in r["steps"] for x in s.get("slices", [])]
+        want = [("s", 1, 3, 1, "'el'"), ("nums", 2, -1, -1, "[3, 2, 1]")]
+        if got != want:
+            return f"expected {want}, got {got}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -368,6 +396,9 @@ def tracer_cases():
         ("container operations are described ahead of time", container_ops),
         ("heapq operations are recognised", heap_ops),
         ("pop on an empty container is flagged", empty_pop_flagged),
+        ("simultaneous assignment / swap is recorded", multi_assign_swap),
+        ("comprehension result grows element by element", comprehension_progress),
+        ("slice ranges are recorded", slice_ranges),
     ]
 
 

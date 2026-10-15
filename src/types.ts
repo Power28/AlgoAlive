@@ -50,6 +50,44 @@ export interface ExecutionStep {
   entered?: boolean;
   /** 這一行的容器操作（append / pop / heappush…），值在操作發生前以唯讀方式算出 */
   op?: ContainerOp;
+  /** 同時賦值 a, b = b, a */
+  multi?: MultiAssign;
+  /** 這一行用到的切片範圍 */
+  slices?: SliceInfo[];
+  /** 推導式這一圈的進度 */
+  comp?: CompInfo;
+}
+
+export interface MultiAssign {
+  src: string;
+  pairs: { target: string; valueSrc: string; value: PyValue; display: string; loc?: TermLocation; targetLoc?: TermLocation }[];
+  /** 左右兩邊是同一組名稱、順序不同 */
+  swap: boolean;
+}
+
+export interface SliceInfo {
+  var: string;
+  src: string;
+  /** slice.indices() 正規化後的範圍 */
+  start: number;
+  stop: number;
+  step: number;
+  display: string;
+}
+
+export interface CompInfo {
+  src: string;
+  kind: 'list' | 'set' | 'dict';
+  /** 迭代變數名稱 */
+  item: string;
+  /** 已處理幾個元素（0 = 剛開始） */
+  count: number;
+  itemDisplay?: string;
+  /** 條件是否通過（沒有 if 時永遠是 true） */
+  kept?: boolean;
+  valueDisplay?: string;
+  /** 到目前為止組出來的結果 */
+  result: PyValue;
 }
 
 export interface ContainerOp {
@@ -82,7 +120,7 @@ export interface ContainerOp {
 export interface LoopInfo {
   /** 迴圈 header 所在行 */
   line: number;
-  kind: 'for' | 'while';
+  kind: 'for' | 'while' | 'comp';
   /** header 原文，例如 "for i in range(3, n + 1)" */
   src: string;
   /** 第幾圈（1 起算）；在 header 行時代表正在檢查是否還有這一圈 */

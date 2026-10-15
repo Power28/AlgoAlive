@@ -35,6 +35,10 @@ export function stepMarks(step: ExecutionStep): { reads: Marks; writes: Marks } 
   }
   for (const term of step.calc?.terms ?? []) addLoc(reads, term.loc);
   addLoc(writes, step.calc?.targetLoc);
+  for (const pair of step.multi?.pairs ?? []) {
+    addLoc(reads, pair.loc);
+    addLoc(writes, pair.targetLoc);
+  }
   const op = step.op;
   if (op && !op.empty) {
     // 取出 / 移除的那一格（放入的位置在下一步才出現，用進場動畫表示）；set / dict 整個標示

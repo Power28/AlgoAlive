@@ -376,6 +376,16 @@ async function testRecursionTree(page) {
   await page.click('[role="tab"][aria-selected="true"] button');
 }
 
+async function testStatements(page) {
+  console.log('Swap, comprehension & slices');
+  const swap = await openAndStepTo(page, 'fast-slow', 'lc283', '[data-multi]', 'Swap');
+  record('swap card evaluates the right side first', /evaluate every value on the right first[\s\S]*then assign them all at once[\s\S]*no temporary variable/.test(swap) ? null : `got ${JSON.stringify(swap)}`);
+  const comp = await openAndStepTo(page, 'heap', 'lc1046', '[data-comp]', 'Element #3');
+  record('comprehension card builds the result', /Element #3: s = 4[\s\S]*add -4[\s\S]*-2[\s\S]*-7[\s\S]*-4/.test(comp) ? null : `got ${JSON.stringify(comp)}`);
+  const slice = await openAndStepTo(page, 'backtracking', 'lc78', '[data-slice]', 'path[:] → [1, 2]');
+  record('slice label shows the selected range', slice === 'path[:] → [1, 2]' ? null : `got ${JSON.stringify(slice)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -410,6 +420,7 @@ try {
   await testContext(page);
   await testOps(page);
   await testRecursionTree(page);
+  await testStatements(page);
   await testDemo(page);
   await testExamples(page, expected);
 

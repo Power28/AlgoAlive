@@ -273,6 +273,9 @@ class _CondAnalyzer:
         self.registry = registry
         self.by_line = {}
         self.calc_by_line = {}
+        self.multi_by_line = {}
+        self.slices_by_line = {}
+        self.comp_by_line = {}
         self.compiled = {}
         self.tree = None
         try:
@@ -283,10 +286,16 @@ class _CondAnalyzer:
         for node in ast.walk(tree):
             if not isinstance(node, ast.stmt) or node.lineno in self.by_line or node.lineno in self.calc_by_line:
                 continue
+            self._collect_slices(node)
+            self._collect_comp(node)
             expr = self._condition_of(node)
             if expr is not None:
                 is_test = isinstance(node, (ast.If, ast.While, ast.Assert)) or isinstance(getattr(node, "value", None), ast.IfExp)
                 self.by_line[node.lineno] = (expr, "test" if is_test else "value")
+                continue
+            multi = self._multi_of(node)
+            if multi is not None:
+                self.multi_by_line[node.lineno] = multi
                 continue
             calc = self._calc_of(node)
             if calc is not None:
@@ -499,6 +508,8 @@ class _CondAnalyzer:
         return r if len(r) <= 40 else r[:39] + "…"
 
     def _calc(self, frame, ctx):
+        if frame.f_lineno in self.multi_by_line:
+            return None
         spec = self.calc_by_line.get(frame.f_lineno)
         if spec is None:
             return None
@@ -583,6 +594,128 @@ class _CondAnalyzer:
             if loc:
                 calc["targetLoc"] = loc
         return calc
+
+    # ─────────── 同時賦值 a, b = b, a ───────────
+
+    @staticmethod
+    def _multi_of(stmt):
+        if not (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1):
+            return None
+        t, v = stmt.targets[0], stmt.value
+        if not (isinstance(t, (ast.Tuple, ast.List)) and isinstance(v, (ast.Tuple, ast.List))):
+            return None
+        if len(t.elts) != len(v.elts) or len(t.elts) < 2:
+            return None
+        if any(isinstance(e, ast.Starred) for e in [*t.elts, *v.elts]):
+            return None
+        return stmt
+
+    def multi(self, frame, ctx):
+        stmt = self.multi_by_line.get(frame.f_lineno)
+        if stmt is None:
+            return None
+        try:
+            targets, values = stmt.targets[0].elts, stmt.value.elts
+            pairs = []
+            for t, v in zip(targets, values):
+                term, value, known = self._term(v, frame, ctx)
+                if not known:
+                    return None  # 右邊有無法安全求值的部分（例如 stack.pop()）
+                pair = {"target": self._src(t), "valueSrc": term["src"], "value": term["value"], "display": self._result_short(value)}
+                if term.get("loc"):
+                    pair["loc"] = term["loc"]
+                tloc = self._locate(t, frame)
+                if tloc:
+                    pair["targetLoc"] = tloc
+                pairs.append(pair)
+            tsrc = [p["target"] for p in pairs]
+            vsrc = [p["valueSrc"] for p in pairs]
+            swap = sorted(tsrc) == sorted(vsrc) and tsrc != vsrc
+            return {"src": self._src(stmt), "pairs": pairs, "swap": swap}
+        except Exception:
+            return None
+
+    # ─────────── 切片 s[i:j] ───────────
+
+    def _collect_slices(self, stmt):
+        found = []
+        for n in ast.walk(stmt):
+            if isinstance(n, (ast.FunctionDef, ast.Lambda)) and n is not stmt:
+                continue
+            if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice) and isinstance(n.value, ast.Name):
+                found.append(n)
+        # 只記錄這一行敘述本身的切片（巢狀區塊各自的行另外記）
+        mine = [n for n in found if n.lineno == stmt.lineno]
+        if mine and stmt.lineno not in self.slices_by_line:
+            self.slices_by_line[stmt.lineno] = mine
+
+    def slices(self, frame, ctx):
+        out = []
+        for node in self.slices_by_line.get(frame.f_lineno, []):
+            try:
+                seq = self._eval(node.value, frame)
+                if not isinstance(seq, (list, tuple, str, collections.deque)):
+                    continue
+                sl = node.slice
+                parts = [self._eval(x, frame) if x is not None else None for x in (sl.lower, sl.upper, sl.step)]
+                start, stop, step = slice(*parts).indices(len(seq))
+                result = self._eval(node, frame)
+                out.append({
+                    "var": node.value.id, "src": self._src(node), "start": start, "stop": stop, "step": step,
+                    "display": self._result_short(result),
+                })
+            except (_Unknown, TypeError, ValueError):
+                continue
+        return out
+
+    # ─────────── 推導式 [f(x) for x in seq if cond] ───────────
+
+    def _collect_comp(self, stmt):
+        for n in ast.walk(stmt):
+            if isinstance(n, (ast.ListComp, ast.SetComp, ast.DictComp)) and len(n.generators) == 1:
+                gen = n.generators[0]
+                if isinstance(gen.target, ast.Name) and not gen.is_async and n.lineno == stmt.lineno:
+                    self.comp_by_line.setdefault(stmt.lineno, n)
+                    return
+
+    def comp(self, frame, ctx, state):
+        """state：這個 frame 這一行推導式的進度 {"acc": [...], "count": k}；由呼叫端依 frame 保存"""
+        node = self.comp_by_line.get(frame.f_lineno)
+        if node is None:
+            return None
+        gen = node.generators[0]
+        var = gen.target.id
+        kind = "list" if isinstance(node, ast.ListComp) else "set" if isinstance(node, ast.SetComp) else "dict"
+        info = {"src": self._src(node), "kind": kind, "item": var}
+        if var not in frame.f_locals:
+            # 剛開始（還沒拿到第一個元素）
+            state.clear()
+            state.update({"acc": [], "count": 0})
+            info.update({"count": 0, "result": _ser([] if kind == "list" else set() if kind == "set" else {}, ctx)})
+            return info
+        if "acc" not in state:
+            return None
+        try:
+            # 每次回到推導式開頭時，迭代變數還是「剛處理完」的那個元素：依它重算這一圈的結果
+            item = frame.f_locals[var]
+            keep = all(bool(self._eval(c, frame)) for c in gen.ifs)
+            state["count"] += 1
+            info.update({"count": state["count"], "itemDisplay": self._result_short(item), "kept": keep})
+            if keep:
+                if kind == "dict":
+                    k, v = self._eval(node.key, frame), self._eval(node.value, frame)
+                    state["acc"].append((k, v))
+                    info["valueDisplay"] = f"{self._result_short(k)}: {self._result_short(v)}"
+                else:
+                    v = self._eval(node.elt, frame)
+                    state["acc"].append(v)
+                    info["valueDisplay"] = self._result_short(v)
+            acc = state["acc"]
+            built = acc if kind == "list" else set(acc) if kind == "set" else dict(acc)
+            info["result"] = _ser(built, ctx)
+            return info
+        except Exception:
+            return None
 
     def evaluate_calc(self, frame, ctx):
         try:
@@ -876,6 +1009,21 @@ class _LoopTracker:
             return iter_node.args[0].id
         return None
 
+    def comp_loop(self, frame, comp):
+        """推導式的圈數：沿用迴圈列的格式"""
+        node = self.analyzer.comp_by_line.get(frame.f_lineno)
+        if node is None or comp is None or comp.get("count", 0) == 0:
+            return None
+        gen = node.generators[0]
+        info = {"line": frame.f_lineno, "kind": "comp", "src": comp["src"], "iteration": comp["count"]}
+        total = self._total(gen.iter, frame)
+        if total is not None:
+            info["total"] = total
+        if isinstance(gen.iter, ast.Name):
+            info["seq"] = gen.iter.id
+            info["item"] = gen.target.id
+        return info
+
     def on_line(self, frame):
         state = self.frames.setdefault(id(frame), {"last": None})
         line = frame.f_lineno
@@ -985,6 +1133,7 @@ def algoalive_run(code, call_src):
     conditions = _CondAnalyzer(code, registry)
     loops = _LoopTracker(conditions)
     operations = _OpAnalyzer(conditions)
+    comp_states = {}  # (id(frame), 行號) → 推導式進度
     entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
     def record(frame, event, ret=no_value, **extra):
@@ -1019,6 +1168,19 @@ def algoalive_run(code, call_src):
             op = operations.evaluate(frame, ctx)
             if op:
                 step["op"] = op
+            multi = conditions.multi(frame, ctx)
+            if multi:
+                step["multi"] = multi
+            slices = conditions.slices(frame, ctx)
+            if slices:
+                step["slices"] = slices
+            if frame.f_lineno in conditions.comp_by_line:
+                comp = conditions.comp(frame, ctx, comp_states.setdefault((id(frame), frame.f_lineno), {}))
+                if comp:
+                    step["comp"] = comp
+                    comp_loop = loops.comp_loop(frame, comp)
+                    if comp_loop:
+                        step["loops"] = [*step.get("loops", []), comp_loop]
             cond = conditions.evaluate(frame, ctx)
             if cond:
                 step["condition"] = cond
@@ -1045,6 +1207,8 @@ def algoalive_run(code, call_src):
             record(frame, "line")
         elif event == "return":
             loops.on_return(frame)
+            for key in [k for k in comp_states if k[0] == id(frame)]:
+                del comp_states[key]
             entered.discard(id(frame))
             if id(frame) in raising:
                 raising.discard(id(frame))
