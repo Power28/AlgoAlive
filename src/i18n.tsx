@@ -218,6 +218,10 @@ const STRINGS = {
   truthNonEmpty: { en: 'non-empty is True', zh: '非空為 True' },
   truthObject: { en: 'an object is True', zh: '物件為 True' },
   bitsTitle: { en: 'Bitwise', zh: '位元運算' },
+  bitsWidth: { en: "two's complement, {w} bits shown", zh: '二補數，畫出 {w} 位' },
+  bitsExtend: { en: 'Python integers have no fixed width: a negative number continues with infinitely many 1s to the left', zh: 'Python 的整數沒有固定位數：負數的左邊有無限多個 1' },
+  bitsSignBit: { en: 'sign bit: 1 means negative', zh: '符號位：1 代表負數' },
+  bitsSignedNote: { en: "Negative numbers use two's complement: -x = ~x + 1, and the 1s continue forever to the left (…1).", zh: '負數用二補數表示：-x = ~x + 1，左邊的 1 會無限延伸下去（…1）。' },
   condSkipped: { en: 'skipped (short-circuit)', zh: '跳過（短路）' },
   condUnknown: { en: 'not evaluated', zh: '未求值' },
   condUnknownHint: {

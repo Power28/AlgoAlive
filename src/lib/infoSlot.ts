@@ -19,6 +19,9 @@ const CARD_BASE = 82;
 const CALC_CARD = 108;
 const BITS_EXTRA = 128;
 const LEAF_ROW = 34;
+/** 有負數的位元表：多一行說明、可能多一條橫向捲軸 */
+const SIGNED_EXTRA = 34;
+const isSigned = (b: { left: number; right: number; result: number }) => b.left < 0 || b.right < 0 || b.result < 0;
 const GATE_EXTRA = 34;
 
 const OP_CARD = 104;
@@ -36,7 +39,7 @@ function stepCardHeight(step: ExecutionStep): number {
   if (step.event === 'line') {
     const cards = [
       step.condition ? conditionHeight(step.condition) : 0,
-      step.calc ? CALC_CARD + (step.calc.bits?.length ? BITS_EXTRA : 0) : 0,
+      step.calc ? CALC_CARD + (step.calc.bits?.length ? BITS_EXTRA + (step.calc.bits.some(isSigned) ? SIGNED_EXTRA : 0) : 0) : 0,
       step.op ? OP_CARD : 0,
       step.multi ? MULTI_CARD - (step.multi.swap ? 0 : 22) : 0,
       step.comp ? COMP_CARD : 0,

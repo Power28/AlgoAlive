@@ -287,6 +287,7 @@ def solve(n):
       { en: '`a ^ a = 0` and `a ^ 0 = a`, so pairs cancel out.', zh: '`a ^ a = 0`、`a ^ 0 = a`，成對的數會互相抵消。' },
       { en: '`n & (n - 1)` clears the lowest set bit.', zh: '`n & (n - 1)` 會清掉最低位的 1。' },
       { en: '`format(x, "b")` shows the binary form — handy while debugging.', zh: '`format(x, "b")` 可以看二進位，除錯很好用。' },
+      { en: "Negative numbers are two's complement with infinitely many 1s on the left: `-x == ~x + 1`. `& 0xFFFFFFFF` keeps only the low 32 bits, like a 32-bit integer.", zh: '負數是左邊有無限多個 1 的二補數：`-x == ~x + 1`。`& 0xFFFFFFFF` 只留下低 32 位，就像 32 位元整數。' },
     ],
     complexity: { time: 'O(n) / O(bits)', space: 'O(1)' },
     pitfalls: [
@@ -325,6 +326,30 @@ def solve(n):
 `,
         call: 'hammingWeight(11)',
         expected: '3',
+      },
+      {
+        id: 'lc371',
+        number: 371,
+        title: { en: 'Sum of Two Integers', zh: '兩整數之和' },
+        difficulty: 'medium',
+        note: {
+          en: 'XOR adds without carrying, `(a & b) << 1` is the carry. The mask keeps 32 bits; at the end a value above 0x7FFFFFFF is turned back into a negative number.',
+          zh: 'XOR 是不進位的加法，`(a & b) << 1` 是進位。遮罩只保留 32 位；最後超過 0x7FFFFFFF 的值再轉回負數。',
+        },
+        code: `def getSum(a: int, b: int) -> int:
+    mask = 0xFFFFFFFF
+    a &= mask
+    b &= mask
+    while b:
+        carry = ((a & b) << 1) & mask
+        a = a ^ b
+        b = carry
+    if a > 0x7FFFFFFF:
+        a = ~(a ^ mask)
+    return a
+`,
+        call: 'getSum(2, -5)',
+        expected: '-3',
       },
     ],
   },

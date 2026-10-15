@@ -279,6 +279,7 @@ _CALC_CALLS = {"len", "abs", "min", "max", "sum", "round", "int", "float"}
 _LEAF_NODES = (ast.Name, ast.Subscript, ast.Attribute)
 _BIT_OPS = {ast.BitAnd: "&", ast.BitOr: "|", ast.BitXor: "^", ast.LShift: "<<", ast.RShift: ">>"}
 _MAX_BITS_VALUE = 2 ** 32
+_MIN_BITS_VALUE = -(2 ** 31)  # 負數以 32 位以內的二補數顯示
 
 
 def _var_of(node):
@@ -534,14 +535,19 @@ class _CondAnalyzer:
         return term["display"], truthy, value, tree
 
     @staticmethod
-    def _subst(node, repl):
+    def _subst(node, repl, wrap_negative=False):
         """把 repl 中的子節點換成顯示用的名稱節點，回傳新的 AST（不改動原本的樹）"""
         if id(node) in repl:
-            return ast.Name(id=repl[id(node)], ctx=ast.Load())
+            text = repl[id(node)]
+            # -n 代入 n = -6 要寫成 -(-6)；5 - n 寫成 5 - (-3)，不能變成 --6、5 - -3
+            if wrap_negative and text.startswith("-"):
+                text = f"({text})"
+            return ast.Name(id=text, ctx=ast.Load())
         new = copy.copy(node)
         for field, value in ast.iter_fields(node):
             if isinstance(value, ast.AST):
-                setattr(new, field, _CondAnalyzer._subst(value, repl))
+                wrap = isinstance(node, ast.UnaryOp) or (isinstance(node, ast.BinOp) and (field == "right" or isinstance(node.op, ast.Pow)))
+                setattr(new, field, _CondAnalyzer._subst(value, repl, wrap))
             elif isinstance(value, list):
                 setattr(new, field, [_CondAnalyzer._subst(v, repl) if isinstance(v, ast.AST) else v for v in value])
         return new
@@ -622,8 +628,13 @@ class _CondAnalyzer:
                 if isinstance(node, ast.BinOp) and type(node.op) in _BIT_OPS:
                     left, right = self._eval(node.left, frame), self._eval(node.right, frame)
                     ints = [x for x in (left, right, value) if isinstance(x, int) and not isinstance(x, bool)]
-                    if len(ints) == 3 and all(0 <= x < _MAX_BITS_VALUE for x in ints):
+                    if len(ints) == 3 and all(_MIN_BITS_VALUE <= x < _MAX_BITS_VALUE for x in ints):
                         bits.append({"op": _BIT_OPS[type(node.op)], "left": left, "right": right, "result": value})
+                elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Invert):
+                    operand = self._eval(node.operand, frame)
+                    ints = [x for x in (operand, value) if isinstance(x, int) and not isinstance(x, bool)]
+                    if len(ints) == 2 and all(_MIN_BITS_VALUE <= x < _MAX_BITS_VALUE for x in ints):
+                        bits.append({"op": "~", "left": operand, "right": 0, "result": value})
             result = self._eval(expr, frame)
         except _Unknown:
             return None

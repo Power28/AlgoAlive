@@ -477,6 +477,24 @@ async function testDesign(page) {
   record('op card explains moving between stacks', /Take 3 off the end of self\.inbox and put it at the end of self\.outbox/.test(move) ? null : `got ${JSON.stringify(move)}`);
 }
 
+async function testNegativeBits(page) {
+  console.log('Negative numbers in bits');
+  // 371：b &= mask，b = -5 → 32 位二補數；遮罩後左邊的 …1 變成 …0
+  await openAndStepTo(page, 'bit-manipulation', 'lc371', '[data-bits="signed"]', '32 bits', { keepOpen: true });
+  await sleep(300);
+  const view = await page.evaluate(() => {
+    const box = document.querySelector('main [data-bits="signed"]');
+    return {
+      title: box?.querySelector('div')?.innerText ?? '',
+      extend: [...(box?.querySelectorAll('[data-extend]') ?? [])].map((e) => e.dataset.extend).join(''),
+      note: !!box?.querySelector('[data-bits-note]'),
+      signBits: [...(box?.querySelectorAll('[title]') ?? [])].filter((e) => /sign bit/.test(e.getAttribute('title'))).length,
+    };
+  });
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('negative numbers are drawn in two\'s complement', /32 bits shown/.test(view.title) && view.extend === '100' && view.note && view.signBits === 1 ? null : `got ${JSON.stringify(view)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -516,6 +534,7 @@ try {
   await testTryExcept(page);
   await testBuiltins(page);
   await testDesign(page);
+  await testNegativeBits(page);
   await testDemo(page);
   await testExamples(page, expected);
 

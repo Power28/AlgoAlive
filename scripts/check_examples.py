@@ -559,6 +559,17 @@ def tracer_cases():
         if ops != ["self.items", "self.items"]:
             return f"self.items.append should be a container op, got {ops}"
 
+    def negative_bits():
+        r = run("def f(n):\n    a = n & -n\n    b = n >> 1\n    c = ~n\n    d = 5 - n\n    return a\n", "f(-6)")
+        calcs = {s["lineNumber"]: s["calc"] for s in r["steps"] if s.get("calc")}
+        got = {line: [(b["op"], b["left"], b["right"], b["result"]) for b in c.get("bits", [])] for line, c in calcs.items()}
+        want = {2: [("&", -6, 6, 2)], 3: [(">>", -6, 1, -3)], 4: [("~", -6, 0, 5)], 5: []}
+        if got != want:
+            return f"expected bits {want}, got {got}"
+        # 負數代入時加括號：-(-6)、5 - (-6)
+        if calcs[2]["stages"][0] != "-6 & -(-6)" or calcs[5]["stages"][0] != "5 - (-6)":
+            return f"negative values must be parenthesised: {calcs[2]['stages']} / {calcs[5]['stages']}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -593,6 +604,7 @@ def tracer_cases():
         ("built-in calls show how each item is processed", builtin_calls),
         ("built-in cards never consume iterators or run skipped calls", builtin_calls_are_safe),
         ("design problems run from LeetCode's two arrays", design_problem),
+        ("negative numbers get bit tables and parenthesised substitution", negative_bits),
     ]
 
 
