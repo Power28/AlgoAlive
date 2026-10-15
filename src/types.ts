@@ -58,7 +58,25 @@ export interface ExecutionStep {
   comp?: CompInfo;
   /** 這一行是 break / continue */
   jump?: { kind: 'break' | 'continue'; loopLine: number; loopSrc: string };
+  /** 例外發生時（event = exception）：會被哪個 except 接住，或往外拋 */
+  exc?: ExcFlow;
+  /** try: / except 比對 / else / finally 這幾行在做什麼 */
+  tryFlow?: TryFlow;
 }
+
+export interface ExcFlow {
+  type: string;
+  message: string;
+  /** 由內往外經過的 try；handlers 是依序比對過的 except（match 為 null 代表無法安全判斷） */
+  route: { line: number; handlers: { line: number; src: string; match: boolean | null }[]; finally: number | null }[];
+  outcome: { kind: 'caught'; line: number } | { kind: 'propagate'; func: string; line: number } | { kind: 'uncaught' };
+}
+
+export type TryFlow =
+  | { kind: 'try'; handlers: string[]; finally: number | null }
+  | { kind: 'except'; src: string; type: string; message: string; match: boolean | null; as?: string }
+  | { kind: 'else' }
+  | { kind: 'finally'; exc?: string; reraise?: boolean };
 
 export interface MultiAssign {
   src: string;

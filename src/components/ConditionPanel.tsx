@@ -130,8 +130,14 @@ export function ConditionPanel({ condition, heap, line }: { condition: Condition
 export type HintTone = 'true' | 'false' | 'unknown' | 'calc';
 
 export function lineHint(step: ExecutionStep | undefined): { text: string; tone: HintTone } | undefined {
-  if (!step || step.event !== 'line') return undefined;
+  if (!step) return undefined;
   const clip = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n)}…` : s);
+  if (step.event === 'exception' && step.exc) return { text: `✗ ${clip(`${step.exc.type}: ${step.exc.message}`)}`, tone: 'false' };
+  if (step.event !== 'line') return undefined;
+  if (step.tryFlow?.kind === 'except') {
+    const { type, match } = step.tryFlow;
+    return { text: `${type} ${match ? '✓' : match === false ? '✗' : '?'}`, tone: match ? 'true' : match === false ? 'false' : 'unknown' };
+  }
   if (step.condition) {
     const c = step.condition;
     // 賦值 / 回傳中的 and / or：提示實際被選中的值

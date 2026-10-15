@@ -360,7 +360,7 @@ function RuntimeBadge({ status, detail }: { status: RuntimeStatus; detail?: stri
 function ErrorBox({ message, line, timeout }: { message: string; line?: number | null; timeout?: boolean }) {
   const t = useT();
   return (
-    <div className="mb-5 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
+    <div data-error className="mb-5 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
       <TriangleAlert size={16} className="mt-0.5 shrink-0" />
       <div>
         <div className="font-mono">{message}</div>

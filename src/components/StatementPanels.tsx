@@ -8,7 +8,7 @@ import { useT } from '../i18n';
 export const MULTI_COLOR = '#f9a8d4';
 export const COMP_COLOR = '#818cf8';
 
-function Card({ color, title, line, children, data }: { color: string; title: string; line: number; children: ReactNode; data: string }) {
+export function Card({ color, title, line, children, data }: { color: string; title: string; line: number; children: ReactNode; data: string }) {
   const t = useT();
   return (
     <div className="rounded-lg border px-3 py-2.5" style={{ borderColor: `${color}66`, backgroundColor: `${color}0d` }} {...{ [data]: true }}>

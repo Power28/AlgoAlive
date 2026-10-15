@@ -167,4 +167,97 @@ def insert(word):
       },
     ],
   },
+  {
+    id: 'exceptions',
+    category: 'techniques',
+    title: { en: 'Exceptions (try / except)', zh: '例外處理（try / except）' },
+    tagline: {
+      en: 'Let a conversion or a deep helper fail, and decide in one place what happens when it does.',
+      zh: '讓轉換或深層的輔助函式直接出錯，再在一個地方決定出錯時要怎麼辦。',
+    },
+    whenToUse: [
+      { en: 'Parsing / validating input: `int(s)`, `float(s)` raise ValueError on bad text.', zh: '解析、驗證輸入：`int(s)`、`float(s)` 遇到不合法的字串會拋出 ValueError。' },
+      { en: 'A helper deep in the call stack finds an invalid case — `raise` and let the caller stop everything.', zh: '呼叫堆疊深處的輔助函式發現不合法——直接 `raise`，讓外層一次停下來。' },
+      { en: 'Cleanup that must always run (closing, restoring state): put it in `finally`.', zh: '一定要執行的收尾（關閉、恢復狀態）：放在 `finally`。' },
+    ],
+    idea: [
+      { en: 'When a line raises, Python leaves the try block right away and checks each `except` from top to bottom; the first match handles it.', zh: '某一行出錯時，Python 立刻離開 try 區塊，由上往下比對每個 `except`，第一個符合的負責處理。' },
+      { en: 'No match (or no try at all) → the exception leaves the function and is raised again at the caller\'s line, and so on outward.', zh: '沒有符合的（或根本沒有 try）→ 例外離開這個函式，在呼叫者那一行再次拋出，一路往外。' },
+      { en: '`else` runs only when the try block finished without an exception; `finally` runs in every case.', zh: '`else` 只在 try 區塊沒出錯時執行；`finally` 不論如何都會執行。' },
+    ],
+    template: `try:
+    value = int(text)
+except ValueError:
+    value = 0          # 出錯時
+else:
+    value += 1         # 沒出錯時
+finally:
+    print("done")      # 一定會執行`,
+    complexity: { time: 'O(1) extra', space: 'O(1)', note: { en: 'A try block costs almost nothing when nothing is raised.', zh: '沒有拋出例外時，try 幾乎沒有額外成本。' } },
+    pitfalls: [
+      { en: 'A bare `except:` also catches bugs such as NameError or KeyboardInterrupt — catch the specific exception.', zh: '只寫 `except:` 會連 NameError、KeyboardInterrupt 這類錯誤也接住——要指定例外型別。' },
+      { en: 'Order matters: put the more specific `except` first; a broad one above it hides it.', zh: '順序很重要：較精確的 `except` 放前面，寬鬆的放在上面會把它擋掉。' },
+      { en: 'Putting too much code in the try block can swallow exceptions you did not expect.', zh: 'try 區塊放太多程式碼，可能會吞掉沒預料到的例外。' },
+    ],
+    examples: [
+      {
+        id: 'lc468',
+        number: 468,
+        title: { en: 'Validate IP Address', zh: '驗證 IP 位址' },
+        difficulty: 'medium',
+        note: {
+          en: 'The helpers only `raise`; the exception travels out of the helper and is caught once in the caller.',
+          zh: '輔助函式只負責 `raise`；例外從輔助函式丟出來，在外層一次接住。',
+        },
+        code: `def validIPAddress(queryIP: str) -> str:
+    def check_v4(part):
+        if str(int(part)) != part or not 0 <= int(part) <= 255:
+            raise ValueError("bad part: " + part)
+
+    def check_v6(part):
+        if not 1 <= len(part) <= 4 or "-" in part:
+            raise ValueError("bad part: " + part)
+        int(part, 16)
+
+    try:
+        if queryIP.count(".") == 3:
+            for part in queryIP.split("."):
+                check_v4(part)
+            return "IPv4"
+        if queryIP.count(":") == 7:
+            for part in queryIP.split(":"):
+                check_v6(part)
+            return "IPv6"
+    except ValueError:
+        pass
+    return "Neither"
+`,
+        call: 'validIPAddress("192.168.01.1")',
+        expected: '\'Neither\'',
+      },
+      {
+        id: 'lc65',
+        number: 65,
+        title: { en: 'Valid Number', zh: '有效數字' },
+        difficulty: 'hard',
+        note: {
+          en: 'Let `float()` do the parsing; Python also accepts "inf" / "nan", so rule those out first.',
+          zh: '交給 `float()` 解析；Python 也接受 "inf" / "nan"，所以先把它們排除。',
+        },
+        code: `def isNumber(s: str) -> bool:
+    lower = s.lower()
+    if "inf" in lower or "nan" in lower:
+        return False
+    try:
+        float(s)
+    except ValueError:
+        return False
+    else:
+        return True
+`,
+        call: 'isNumber("1e1.5")',
+        expected: 'False',
+      },
+    ],
+  },
 ];

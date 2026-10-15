@@ -25,6 +25,9 @@ const OP_CARD = 104;
 const MULTI_CARD = 190;
 const COMP_CARD = 128;
 const JUMP_CARD = 92;
+const TRY_CARD = 120;
+const EXC_BASE = 104;
+const EXC_ROW = 30;
 const CARD_GAP = 12;
 
 function stepCardHeight(step: ExecutionStep): number {
@@ -36,9 +39,11 @@ function stepCardHeight(step: ExecutionStep): number {
       step.multi ? MULTI_CARD - (step.multi.swap ? 0 : 22) : 0,
       step.comp ? COMP_CARD : 0,
       step.jump ? JUMP_CARD : 0,
+      step.tryFlow ? TRY_CARD : 0,
     ].filter(Boolean);
     return cards.reduce((a, b) => a + b, 0) + Math.max(0, cards.length - 1) * CARD_GAP;
   }
+  if (step.exc) return EXC_BASE + Math.max(1, step.exc.route.length) * EXC_ROW;
   return step.returnValue || step.exception ? BANNER : 0;
 }
 

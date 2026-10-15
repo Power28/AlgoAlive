@@ -85,7 +85,7 @@ async function openApp(page, url) {
 async function runActiveTab(page) {
   await page.click('[data-action="visualize"]');
   await page.waitForFunction(
-    () => /Step \d+ \/ [1-9]\d*/.test(document.body.innerText) || document.querySelector('main .text-err'),
+    () => /Step \d+ \/ [1-9]\d*/.test(document.body.innerText) || document.querySelector('main [data-error]'),
     { timeout: 30_000 },
   );
   await page.click('[data-action="last"]');
@@ -94,7 +94,7 @@ async function runActiveTab(page) {
     const panel = document.querySelectorAll('main > section')[1];
     return {
       returned: panel.querySelector('[data-return]')?.textContent ?? null,
-      error: panel.querySelector('.text-err')?.textContent ?? null,
+      error: panel.querySelector('[data-error]')?.textContent ?? null,
     };
   });
 }
@@ -417,6 +417,17 @@ async function testTrieJumpGrid(page) {
   record('grid cells move with their values on a swap', swapped ? null : `moved ${JSON.stringify(moved)} — ${JSON.stringify({ before, after })}`);
 }
 
+async function testTryExcept(page) {
+  console.log('try / except');
+  // 468：check_v4 raise → 丟回 validIPAddress → 被 except ValueError 接住
+  const thrown = await openAndStepTo(page, 'exceptions', 'lc468', '[data-exc]', 'leaves check_v4');
+  record('exception card shows it propagating to the caller', /ValueError: bad part: 01[\s\S]*no try here catches it[\s\S]*leaves check_v4\(\) and is raised again in validIPAddress\(\) at line 14/.test(thrown) ? null : `got ${JSON.stringify(thrown)}`);
+  const caught = await openAndStepTo(page, 'exceptions', 'lc468', '[data-exc]', 'caught by');
+  record('exception card shows the matching except', /try on line 11[\s\S]*except ValueError[\s\S]*caught by the except on line 20/.test(caught) ? null : `got ${JSON.stringify(caught)}`);
+  const check = await openAndStepTo(page, 'exceptions', 'lc468', '[data-try]', 'match for');
+  record('except card answers whether the exception matches', /Is ValueError a match for except ValueError\?[\s\S]*yes — caught!/.test(check) ? null : `got ${JSON.stringify(check)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -453,6 +464,7 @@ try {
   await testRecursionTree(page);
   await testStatements(page);
   await testTrieJumpGrid(page);
+  await testTryExcept(page);
   await testDemo(page);
   await testExamples(page, expected);
 

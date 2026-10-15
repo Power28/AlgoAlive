@@ -415,6 +415,67 @@ def tracer_cases():
         if fmt(r["returnValue"], r.get("returnHeap")) != "TrieNode":
             return f"expected TrieNode, got {fmt(r['returnValue'], r.get('returnHeap'))}"
 
+    def try_except_flow():
+        code = (
+            "def g(x):\n"
+            "    return 10 // x\n"
+            "\n"
+            "def f(xs):\n"
+            "    out = []\n"
+            "    for x in xs:\n"
+            "        try:\n"
+            "            v = g(x)\n"
+            "        except ValueError:\n"
+            "            v = -1\n"
+            "        except ZeroDivisionError as e:\n"
+            "            v = 0\n"
+            "        else:\n"
+            "            v += 1\n"
+            "        finally:\n"
+            "            out.append(v)\n"
+            "    return out\n"
+        )
+        r = run(code, "f([5, 0])")
+        flows = [(s["lineNumber"], s["tryFlow"]["kind"], s["tryFlow"].get("match"), s["tryFlow"].get("reraise")) for s in r["steps"] if s.get("tryFlow")]
+        want = [(7, "try", None, None), (14, "else", None, None), (16, "finally", None, None), (7, "try", None, None),
+                (9, "except", False, None), (11, "except", True, None), (16, "finally", None, False)]
+        if flows != want:
+            return f"expected try flow {want}, got {flows}"
+        excs = [(s["funcName"], [[h["match"] for h in t["handlers"]] for t in s["exc"]["route"]], s["exc"]["outcome"]) for s in r["steps"] if s.get("exc")]
+        want_exc = [("g", [], {"kind": "propagate", "func": "f", "line": 8}), ("f", [[False, True]], {"kind": "caught", "line": 11})]
+        if excs != want_exc:
+            return f"expected exceptions {want_exc}, got {excs}"
+
+    def finally_reraise():
+        code = (
+            "def parse(s):\n"
+            "    try:\n"
+            "        try:\n"
+            "            return int(s)\n"
+            "        except KeyError:\n"
+            "            return -1\n"
+            "        finally:\n"
+            "            print('inner')\n"
+            "    except ValueError:\n"
+            "        return 0\n"
+            "\n"
+            "def top(s):\n"
+            "    try:\n"
+            "        return int(s)\n"
+            "    finally:\n"
+            "        print('cleanup')\n"
+        )
+        r = run(code, "parse('x')")
+        fin = [s["tryFlow"] for s in r["steps"] if s.get("tryFlow", {}).get("kind") == "finally"]
+        if len(fin) != 1 or fin[0].get("reraise") is not True or r["returnValue"]["value"] != 0:
+            return f"inner finally should keep the exception going, got {fin} / {fmt(r['returnValue'])}"
+        r = run(code, "top('x')")
+        if r.get("error", {}).get("type") != "ValueError":
+            return f"expected an uncaught ValueError, got {r.get('error')}"
+        exc = [s["exc"]["outcome"]["kind"] for s in r["steps"] if s.get("exc")]
+        if exc != ["uncaught"] or any(s["event"] == "return" for s in r["steps"]):
+            return f"an exception leaving through finally is not a return: {exc} / {[s['event'] for s in r['steps']]}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -444,6 +505,8 @@ def tracer_cases():
         ("slice ranges are recorded", slice_ranges),
         ("break / continue point at the innermost loop", jump_targets),
         ("TrieNode() constructor is not traced", trie_init_not_traced),
+        ("try / except / else / finally flow", try_except_flow),
+        ("finally re-raises and an uncaught exception is not a return", finally_reraise),
     ]
 
 

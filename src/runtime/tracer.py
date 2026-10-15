@@ -1131,6 +1131,169 @@ class _LoopTracker:
         return frames
 
 
+class _TryTracker:
+    """try / except / else / finally 的流程：
+
+    - 例外發生時：在這個 frame 裡由內往外找包住這一行的 try，依序比對 except，算出會被哪個 except 接住、
+      要先經過哪些 finally，或是往外拋給呼叫者
+    - 執行到 except 那一行（Python 正在比對這個 except）：記下比對結果
+    - 執行到 try:、else 區塊、finally 區塊的第一行：說明為什麼會走到這裡
+    """
+
+    _TRY_TYPES = (ast.Try, getattr(ast, "TryStar", ast.Try))
+
+    def __init__(self, analyzer):
+        self.code = analyzer.code
+        self.tries = []  # (try 節點, 所在函式的第一行)
+        self.pending = {}  # id(frame) → {"exc", "try", "caught"}
+        if analyzer.tree is not None:
+            self._collect(analyzer.tree, None)
+        self.handler_at = {}  # except 行 → (try, handler)
+        self.else_at = {}
+        self.finally_at = {}
+        self.try_at = {}
+        for node, _ in self.tries:
+            self.try_at[node.lineno] = node
+            for h in node.handlers:
+                self.handler_at[h.lineno] = (node, h)
+            if node.orelse:
+                self.else_at[node.orelse[0].lineno] = node
+            if node.finalbody:
+                self.finally_at[node.finalbody[0].lineno] = node
+
+    def _collect(self, node, func_line):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                first = min([child.lineno] + [d.lineno for d in child.decorator_list])
+                self._collect(child, first)
+                continue
+            if isinstance(child, self._TRY_TYPES):
+                self.tries.append((child, func_line))
+            self._collect(child, func_line)
+
+    def _src(self, node):
+        return (ast.get_source_segment(self.code, node) or "").strip()
+
+    def _header(self, h):
+        line = self.code.splitlines()[h.lineno - 1].strip()
+        return line[:-1].rstrip() if line.endswith(":") else line
+
+    @staticmethod
+    def _in_body(node, line):
+        return node.body[0].lineno <= line <= node.body[-1].end_lineno
+
+    def _enclosing(self, frame):
+        """包住目前這一行（在 try 區塊內）的 try，由內往外"""
+        line = frame.f_lineno
+        first = frame.f_code.co_firstlineno
+        found = [n for n, f in self.tries if f == first and self._in_body(n, line)]
+        return sorted(found, key=lambda n: -n.lineno)
+
+    @staticmethod
+    def _matches(handler, exc, frame):
+        """True / False；無法安全判斷時回傳 None"""
+        if handler.type is None:
+            return True
+        if not all(isinstance(n, (ast.Name, ast.Attribute, ast.Tuple, ast.Load)) for n in ast.walk(handler.type)):
+            return None
+        try:
+            kinds = eval(compile(ast.Expression(handler.type), "<except>", "eval"), frame.f_globals, frame.f_locals)
+            return isinstance(exc, kinds)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def on_exception(self, frame, exc):
+        route = []
+        nodes = []
+        caught = None
+        catching_try = None
+        for node in self._enclosing(frame):
+            nodes.append(node)
+            checks = []
+            for h in node.handlers:
+                m = self._matches(h, exc, frame)
+                checks.append({"line": h.lineno, "src": self._header(h), "match": m})
+                if m:
+                    caught = h.lineno
+                    break
+            route.append({
+                "line": node.lineno,
+                "handlers": checks,
+                "finally": node.finalbody[0].lineno if node.finalbody and caught is None else None,
+            })
+            if caught is not None:
+                catching_try = node
+                break
+        info = {"type": type(exc).__name__, "message": str(exc), "route": route}
+        if caught is not None:
+            info["outcome"] = {"kind": "caught", "line": caught}
+        else:
+            outer = frame.f_back
+            while outer is not None and outer.f_code.co_filename != USER_FILE:
+                outer = outer.f_back
+            if outer is not None:
+                info["outcome"] = {"kind": "propagate", "func": outer.f_code.co_name, "line": outer.f_lineno}
+            else:
+                info["outcome"] = {"kind": "uncaught"}
+        self.pending[id(frame)] = {
+            "exc": exc,
+            "route": nodes,  # 例外經過的 try（由內往外），最後一個可能是接住它的那個
+            "catcher": catching_try,
+            "caught": None,
+        }
+        return info
+
+    def still_raising(self, frame):
+        """例外還沒被接住、正在執行它經過的 finally：這段結束後例外會繼續往外拋"""
+        state = self.pending.get(id(frame))
+        if state is None or state["caught"] is not None:
+            return False
+        line = frame.f_lineno
+        return any(n.finalbody and n.finalbody[0].lineno <= line <= n.finalbody[-1].end_lineno for n in state["route"])
+
+    def on_line(self, frame):
+        line = frame.f_lineno
+        state = self.pending.get(id(frame))
+        # 已經離開發生例外的 try（或重新進入同一個 try）：之前的例外不再相關
+        if state is not None:
+            t = state["route"][-1] if state["route"] else None
+            if t is None or line == t.lineno or not (t.lineno <= line <= t.end_lineno):
+                del self.pending[id(frame)]
+                state = None
+        if line in self.try_at:
+            node = self.try_at[line]
+            return {
+                "kind": "try",
+                "handlers": [self._header(h) for h in node.handlers],
+                "finally": node.finalbody[0].lineno if node.finalbody else None,
+            }
+        if line in self.handler_at and state is not None:
+            node, h = self.handler_at[line]
+            exc = state["exc"]
+            m = self._matches(h, exc, frame)
+            info = {"kind": "except", "src": self._header(h), "type": type(exc).__name__, "message": str(exc), "match": m}
+            if m and h.name:
+                info["as"] = h.name
+            if m:
+                state["caught"] = line
+            return info
+        if line in self.else_at:
+            return {"kind": "else"}
+        if line in self.finally_at:
+            node = self.finally_at[line]
+            info = {"kind": "finally"}
+            if state is not None and node in state["route"]:
+                exc = state["exc"]
+                info["exc"] = f"{type(exc).__name__}: {exc}"
+                # 不是接住它的那個 try，或還沒進到 except：finally 結束後例外繼續往外拋
+                info["reraise"] = node is not state["catcher"] or state["caught"] is None
+            return info
+        return None
+
+    def on_return(self, frame):
+        self.pending.pop(id(frame), None)
+
+
 def _visible_locals(frame):
     for name, value in frame.f_locals.items():
         # ".0" 之類是 comprehension / generator 的內部迭代器變數
@@ -1189,6 +1352,7 @@ def algoalive_run(code, call_src):
     conditions = _CondAnalyzer(code, registry)
     loops = _LoopTracker(conditions)
     operations = _OpAnalyzer(conditions)
+    tries = _TryTracker(conditions)
     comp_states = {}  # (id(frame), 行號) → 推導式進度
     entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
@@ -1230,6 +1394,9 @@ def algoalive_run(code, call_src):
             jump = conditions.jump_by_line.get(frame.f_lineno)
             if jump:
                 step["jump"] = jump
+            try_flow = tries.on_line(frame)
+            if try_flow:
+                step["tryFlow"] = try_flow
             slices = conditions.slices(frame, ctx)
             if slices:
                 step["slices"] = slices
@@ -1266,10 +1433,13 @@ def algoalive_run(code, call_src):
         if event == "call" and name.startswith("__") and name.endswith("__"):
             return None
         if event == "line":
-            raising.discard(id(frame))  # 例外已被 try/except 接住，恢復正常
+            # 例外已被 try/except 接住，恢復正常；正在執行 finally（之後還會往外拋）時則否
+            if not tries.still_raising(frame):
+                raising.discard(id(frame))
             record(frame, "line")
         elif event == "return":
             loops.on_return(frame)
+            tries.on_return(frame)
             for key in [k for k in comp_states if k[0] == id(frame)]:
                 del comp_states[key]
             entered.discard(id(frame))
@@ -1280,7 +1450,9 @@ def algoalive_run(code, call_src):
         elif event == "exception":
             raising.add(id(frame))
             exc_type, exc_value, _ = arg
-            record(frame, "exception", exception=f"{exc_type.__name__}: {exc_value}")
+            if exc_value is None:  # 有些 C 函式只給型別
+                exc_value = exc_type()
+            record(frame, "exception", exception=f"{exc_type.__name__}: {exc_value}", exc=tries.on_exception(frame, exc_value))
         return tracer
 
     ns = {"__name__": "__main__"}
