@@ -10,12 +10,11 @@
 //   npm run capture -- --url http://localhost:5173/ # 錄本機 dev server（先 npm run dev）
 //
 // 需求：本機安裝 Chrome / Edge（或設定 CHROME_PATH），以及含 Pillow 的 Python 3。
-import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { launchOptions } from './browser.mjs';
+import { launchBrowser } from './browser.mjs';
 import { runPython } from './python.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -159,7 +158,7 @@ function buildGif(framesDir) {
 
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'algoalive-frames-'));
 console.log(`Capturing ${url}`);
-const browser = await puppeteer.launch(launchOptions());
+const browser = await launchBrowser();
 try {
   await captureScreenshot(browser);
   await captureLibrary(browser);

@@ -9,12 +9,11 @@
 // - 頁籤：預設頁籤、新增空白頁籤並執行、重新命名、重新整理後仍保留、關閉
 // - 語言切換
 // - 整個過程瀏覽器主控台沒有錯誤
-import puppeteer from 'puppeteer-core';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { launchOptions } from './browser.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREVIEW_PORT = 4179;
@@ -436,7 +435,7 @@ const expected = loadExpected();
 const server = urlArg ? { url: urlArg, stop: () => {} } : await startPreview();
 console.log(`Testing ${server.url}`);
 
-const browser = await puppeteer.launch(launchOptions({ defaultViewport: { width: 1440, height: 860 } }));
+const browser = await launchBrowser({ defaultViewport: { width: 1440, height: 860 } });
 const consoleErrors = [];
 try {
   const page = await browser.newPage();
