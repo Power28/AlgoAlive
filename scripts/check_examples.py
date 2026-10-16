@@ -76,18 +76,19 @@ def fmt(v, heap=None):
     if t == "str":
         s = v["value"].replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
         return f"'{s}'"
-    if t in ("list", "tuple", "deque") and "index" in v:
-        # 大陣列只送出部分格子：省略的區段寫成 …（與前端相同）
+    if "index" in v:
+        # 大陣列 / dict / set 只送出部分項目：省略的區段寫成 …（與前端相同）
+        texts = [f"{f(k)}: {f(x)}" for k, x in v["entries"]] if t == "dict" else [f(x) for x in v["items"]]
         parts, prev = [], -1
-        for r, x in zip(v["index"], v["items"]):
+        for r, text in zip(v["index"], texts):
             if r > prev + 1:
                 parts.append("…")
-            parts.append(f(x))
+            parts.append(text)
             prev = r
         if prev < v["length"] - 1:
             parts.append("…")
         body = ", ".join(parts)
-        return {"list": f"[{body}]", "deque": f"deque([{body}])", "tuple": f"({body})"}[t]
+        return {"list": f"[{body}]", "deque": f"deque([{body}])", "tuple": f"({body})", "set": f"{{{body}}}", "dict": f"{{{body}}}"}[t]
     if t == "list":
         return f"[{', '.join(map(f, v['items']))}{more}]"
     if t == "deque":
@@ -203,6 +204,35 @@ def tracer_cases():
         big = run("def f():\n    return list(range(200))\n", "f()")
         if fmt(big["returnValue"]) != "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, …, 195, 196, 197, 198, 199]":
             return f"large return value: {fmt(big['returnValue'])}"
+
+    def large_dicts():
+        code = (
+            "def two_sum(nums, target):\n"
+            "    seen = {}\n"
+            "    for i, x in enumerate(nums):\n"
+            "        need = target - x\n"
+            "        if need in seen:\n"
+            "            return [seen[need], i]\n"
+            "        seen[x] = i\n"
+            "    return []\n"
+        )
+        r = json.loads(algoalive_run(code, "two_sum(list(range(400)), 701)", 5000))
+        if fmt(r["returnValue"]) != "[350, 351]":
+            return f"returned {fmt(r['returnValue'])}"
+        last = [s for s in r["steps"] if "seen" in s["variables"]][-1]
+        seen = last["variables"]["seen"]
+        keys = [k["value"] for k, _ in seen["entries"]]
+        if seen.get("length") != 351 or len(keys) > 150 or 350 not in keys or keys[:10] != list(range(10)):
+            return f"seen should be sent sparsely with the key need: {seen.get('length')} / {keys}"
+        if not fmt(seen).startswith("{0: 0, 1: 1,") or "…" not in fmt(seen):
+            return f"sparse dict text: {fmt(seen)[:80]}"
+        big = run("def f():\n    s = set(range(300))\n    d = {i: -i for i in range(300)}\n    x = 150\n    return len(s)\n", "f()")
+        s = big["steps"][-1]["variables"]["s"]
+        if s.get("length") != 300 or 150 not in s["index"] or len(s["items"]) > 150:
+            return f"set should be sent sparsely with the element x: {s.get('length')} / {s.get('index')}"
+        d = big["steps"][-1]["variables"]["d"]
+        if d.get("length") != 300 or [150, -150] not in [[k["value"], x["value"]] for k, x in d["entries"]]:
+            return f"dict should be sent with the key x: {fmt(d)[:120]}"
 
     def step_limit_option():
         code = "def f(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n"
@@ -659,6 +689,7 @@ def tracer_cases():
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("a higher step limit can be requested (up to 5000)", step_limit_option),
         ("large lists send the cells around every pointer", large_lists),
+        ("large dicts and sets send the entries matching a variable", large_dicts),
         ("syntax error reports line", syntax_error),
         ("runtime error reports line", runtime_error_line),
         ("class Solution hides self", class_solution),

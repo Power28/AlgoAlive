@@ -169,6 +169,8 @@ class _Ctx:
         self.queue = []
         # 這一步的整數變數：大陣列只送出這些位置（可能是指針）附近的格子
         self.focus = set()
+        # 這一步的變數值：大的 dict / set 只送出 key（元素）等於這些值的項目，以及開頭、結尾
+        self.focus_values = set()
 
     def ref(self, obj):
         sid = self.registry.sid(obj)
@@ -206,6 +208,31 @@ def _sparse_indexes(n, focus):
         if len(keep) >= SPARSE_MAX:
             break
     return sorted(keep)[:SPARSE_MAX]
+
+
+def _sparse_entries(keys, focus_values):
+    """大的 dict / set 要送出的位置：開頭、結尾，以及 key 等於目前變數值的項目（由小到大，最多 SPARSE_MAX 項）"""
+    n = len(keys)
+    keep = set(range(min(SPARSE_HEAD, n))) | set(range(max(0, n - SPARSE_TAIL), n))
+    if focus_values:
+        for i, k in enumerate(keys):
+            try:
+                if k in focus_values:
+                    keep.add(i)
+            except TypeError:
+                pass
+            if len(keep) >= SPARSE_MAX:
+                break
+    return sorted(keep)[:SPARSE_MAX]
+
+
+def _focus_value(x):
+    """可以拿來比對 key 的變數值：數字、字串，以及由它們組成的 tuple（例如 BFS 的 (r, c)）"""
+    if isinstance(x, bool):
+        return False
+    if isinstance(x, (int, float)) or (isinstance(x, str) and len(x) <= 100):
+        return True
+    return isinstance(x, tuple) and len(x) <= 4 and all(_focus_value(y) for y in x)
 
 
 def _ser(v, ctx=None, depth=0, seen=None):
@@ -253,12 +280,30 @@ def _ser(v, ctx=None, depth=0, seen=None):
             items = sorted(v)
         except TypeError:
             items = list(v)
+        if len(items) > MAX_ITEMS and depth == 0 and ctx is not None:
+            # 大的 set：開頭、結尾，以及等於目前變數值的元素
+            keep = _sparse_entries(items, ctx.focus_values)
+            return {"type": "set", "items": [_ser(items[i], ctx, depth + 1, seen) for i in keep], "index": keep, "length": len(items)}
         out = {"type": "set", "items": [_ser(x, ctx, depth + 1, seen) for x in items[:MAX_ITEMS]]}
         if len(items) > MAX_ITEMS:
             out["truncated"] = len(items) - MAX_ITEMS
         return out
     if isinstance(v, dict):
         entries = list(v.items())
+        if len(entries) > MAX_ITEMS and depth == 0 and ctx is not None:
+            # 大的 dict：開頭、結尾（最近放入的），以及 key 等於目前變數值的項目
+            keep = _sparse_entries([k for k, _ in entries], ctx.focus_values)
+            out = {
+                "type": "dict",
+                "entries": [[_ser(entries[i][0], ctx, depth + 1, seen), _ser(entries[i][1], ctx, depth + 1, seen)] for i in keep],
+                "index": keep,
+                "length": len(entries),
+            }
+            if isinstance(v, collections.Counter):
+                out["cls"] = "Counter"
+            elif isinstance(v, collections.defaultdict):
+                out["cls"] = "defaultdict"
+            return out
         out = {
             "type": "dict",
             "entries": [[_ser(k, ctx, depth + 1, seen), _ser(x, ctx, depth + 1, seen)] for k, x in entries[:MAX_ITEMS]],
@@ -2104,7 +2149,9 @@ def algoalive_run(code, call_src, max_steps=None):
         if len(steps) >= limit:
             raise TimeoutError(f"Execution exceeded {limit} steps (possible infinite loop)")
         ctx = _Ctx(registry)
-        ctx.focus = {x for _, x in _visible_locals(frame) if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < 10 ** 7}
+        local_values = [x for _, x in _visible_locals(frame)]
+        ctx.focus = {x for x in local_values if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < 10 ** 7}
+        ctx.focus_values = {x for x in local_values if _focus_value(x)}
         depth = _user_depth(frame)
         variables, stack_refs = _snapshot(frame, ctx, depth)
         step = {

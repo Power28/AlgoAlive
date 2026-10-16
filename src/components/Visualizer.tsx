@@ -121,7 +121,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
   for (const [name, v] of entries) {
     const p = prevVars?.[name];
     if (graphVars.has(name)) continue;
-    if (isSparse(v)) {
+    if (isSequence(v) && isSparse(v)) {
       // 大陣列：展開成格子，省略的區段顯示「…」；上一步的值依真實索引對齊
       const view = expandSparse(v);
       const prevView = isSparse(p) ? expandSparse(p) : null;

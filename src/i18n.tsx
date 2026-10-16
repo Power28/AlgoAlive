@@ -11,6 +11,7 @@ const STRINGS = {
   testCall: { en: 'Test call', zh: '測試呼叫' },
   languageLabel: { en: 'Language', zh: '語言' },
   cellsHidden: { en: 'Cells far from every pointer are not shown', zh: '離所有指針都很遠的格子沒有顯示' },
+  entriesHidden: { en: 'Only the first and last entries and the ones matching a variable are shown', zh: '只顯示開頭、結尾，以及與變數值相同的項目' },
   tutorialLanguage: { en: 'Examples in', zh: '範例語言' },
   languageHint: { en: 'Programming language of this tab (edited code is never overwritten — a new tab opens instead)', zh: '這個頁籤的程式語言（已修改的程式碼不會被覆蓋，會改開新頁籤）' },
   callInterpreted: { en: 'Read as', zh: '解讀為' },
