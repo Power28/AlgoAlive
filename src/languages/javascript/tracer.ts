@@ -16,7 +16,10 @@ import { Ctx, Registry, inspect, ser, short } from './serialize.ts';
 import { Analyzer, CardBuilder, Thunks, loopTotal, type LoopSpec, type Read, type StepSpec, type TrySpec } from './cards.ts';
 import type { ExcFlow, TryFlow } from '../../types';
 
+/** 預設的步數上限；到達上限後使用者可以選擇追蹤更多步 */
 export const MAX_STEPS = 500;
+/** 最多能追蹤的步數 */
+export const MAX_STEPS_LIMIT = 5000;
 const MAX_STDOUT = 10000;
 
 // Acorn 的 AST 節點：這裡只讀取 ESTree 的欄位
@@ -576,6 +579,7 @@ interface Frame {
 class StopSignal extends Error {}
 
 export class JsRuntime {
+  maxSteps = MAX_STEPS;
   steps: ExecutionStep[] = [];
   stdout = '';
   private frames: Frame[] = [];
@@ -601,7 +605,7 @@ export class JsRuntime {
 
   /** build：與變數共用同一個 heap 的額外欄位（說明卡片） */
   private record(event: ExecutionStep['event'], extra: Partial<ExecutionStep> = {}, build?: (ctx: Ctx) => Partial<ExecutionStep>) {
-    if (this.steps.length >= MAX_STEPS) throw new StopSignal();
+    if (this.steps.length >= this.maxSteps) throw new StopSignal();
     const ctx = new Ctx(this.registry);
     const frame = this.frames.at(-1)!;
     const variables: Record<string, Value> = {};
@@ -1084,8 +1088,9 @@ function convert(value: unknown, type: string, param: string, pos: unknown, prel
 
 // ─────────────────────────────── 進入點 ───────────────────────────────
 
-export function traceJs(code: string, call: string): TraceResult {
+export function traceJs(code: string, call: string, maxSteps: number = MAX_STEPS): TraceResult {
   const rt = new JsRuntime();
+  rt.maxSteps = Math.min(maxSteps, MAX_STEPS_LIMIT);
   const result: TraceResult = { steps: rt.steps, stdout: '' };
   let inst: Instrumented;
   try {
@@ -1222,7 +1227,7 @@ export function traceJs(code: string, call: string): TraceResult {
     if (e instanceof CallHintError) {
       result.error = { type: 'CallError', message: e.message, line: null, timeout: false, hint: e.hint };
     } else if (timeout) {
-      const message = `TimeoutError: Execution exceeded ${MAX_STEPS} steps (possible infinite loop)`;
+      const message = `TimeoutError: Execution exceeded ${rt.maxSteps} steps (possible infinite loop)`;
       result.error = { type: 'TimeoutError', message, line: rt.lastLine, timeout: true };
       const last = rt.steps.at(-1);
       if (last) rt.steps.push({ ...last, stepIndex: rt.steps.length, event: 'exception', exception: message });

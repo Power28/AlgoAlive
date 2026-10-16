@@ -9,7 +9,7 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const req = e.data;
   if (req.type !== 'run') return;
   try {
-    post({ type: 'result', id: req.id, json: JSON.stringify(traceJs(req.code, req.call)) });
+    post({ type: 'result', id: req.id, json: JSON.stringify(traceJs(req.code, req.call, req.maxSteps)) });
   } catch (err) {
     post({ type: 'run-error', id: req.id, message: String(err) });
   }

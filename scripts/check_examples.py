@@ -164,6 +164,18 @@ def run(code, call):
 # ─────────────── tracer 行為測試 ───────────────
 
 def tracer_cases():
+    def step_limit_option():
+        code = "def f(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n"
+        r = run(code, "f(300)")
+        if not (r.get("error") or {}).get("timeout") or len(r["steps"]) != MAX_STEPS + 1:
+            return f"the default limit should stop f(300): {r.get('error')} / {len(r['steps'])} steps"
+        more = json.loads(algoalive_run(code, "f(300)", 2000))
+        if more.get("error") or fmt(more["returnValue"]) != "44850":
+            return f"f(300) should finish with 2000 steps: {more.get('error')}"
+        capped = json.loads(algoalive_run(code, "f(5000)", 99999))
+        if not (capped.get("error") or {}).get("timeout") or len(capped["steps"]) != 5001:
+            return f"the limit should be capped at 5000 steps: {len(capped['steps'])}"
+
     """(名稱, 檢查函式)；檢查函式回傳錯誤訊息，通過則回傳 None。"""
 
     def infinite_loop():
@@ -605,6 +617,7 @@ def tracer_cases():
 
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
+        ("a higher step limit can be requested (up to 5000)", step_limit_option),
         ("syntax error reports line", syntax_error),
         ("runtime error reports line", runtime_error_line),
         ("class Solution hides self", class_solution),

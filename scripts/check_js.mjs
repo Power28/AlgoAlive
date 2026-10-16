@@ -142,6 +142,16 @@ check('infinite loops stop at MAX_STEPS, even inside try / catch', () => {
   }
 });
 
+check('a higher step limit can be requested (up to 5000)', () => {
+  const code = 'function f(n) {\n  let t = 0;\n  for (let i = 0; i < n; i++) {\n    t += i;\n  }\n  return t;\n}';
+  const stopped = traceJs(code, 'f(300)');
+  if (!stopped.error?.timeout) return 'the default limit should stop f(300)';
+  const more = traceJs(code, 'f(300)', 2000);
+  if (more.error || int(more.returnValue) !== 44850) return `f(300) with 2000 steps: ${more.error?.message ?? JSON.stringify(more.returnValue)}`;
+  const capped = traceJs(code, 'f(5000)', 99999);
+  if (!capped.error?.timeout || capped.steps.length !== 5001) return `capped at ${capped.steps.length} steps`;
+});
+
 check('syntax and runtime errors report the line', () => {
   const syntax = traceJs('function f() {\n  return 1 +;\n}', 'f()');
   if (syntax.error?.type !== 'SyntaxError' || syntax.error.line !== 2) return `syntax ${JSON.stringify(syntax.error)}`;
