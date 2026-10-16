@@ -59,7 +59,8 @@ AlgoAlive 是專為 **LeetCode 刷題** 設計的互動式步驟動畫器，支�
 - `class` 寫的設計類題目，`this.stack` 等狀態以變數顯示
 - 值用 JavaScript 的寫法顯示（`null`、`true`、`"字串"`）
 - 說明卡片：條件判斷（`&&` / `||` / `!` 的邏輯樹與短路、JavaScript 的真假值規則，例如空陣列也是 true）、計算過程（`Math.floor((lo + hi) / 2)` 逐步化簡、`+=` / `++`、位元運算）、容器操作（`push` / `pop` / `shift` / `unshift`、`Set` 的 `add` / `delete`、`Map` 的 `set` / `delete`、物件的 `obj[key] = value` / `delete`，`b.push(a.pop())` 也會說明）、解構交換 `[a, b] = [b, a]`、`slice` / `substring` 的範圍、`break` / `continue`、迴圈列的圈數；值都在執行前以唯讀方式算出，含有可能修改資料的呼叫（例如 `stack.pop()`）不預先求值
-- try / catch 流程與內建函式（`sort` / `reduce`…）的卡片目前只有 Python 版
+- try / catch 流程：例外卡片列出經過的 try、被第幾行的 `catch` 接住或丟回呼叫者；`try`、`catch`、`finally` 這幾行各自說明（`catch` 會接住所有例外、finally 之後例外會不會繼續往外丟）
+- 內建函式與陣列方法：`reduce` 的累計值、`Math.max(...arr)` / `Math.min(...arr)` 的勝出者、`sort` / `toSorted` 的排序動畫（沒有比較函式時說明 JavaScript 依字串排序）、`reverse`、`some` / `every` 的短路、`map` / `filter` 每個元素的結果、`join`、`new Set(arr)`；回呼函式只在「單一運算式、沒有副作用」的箭頭函式（例如 `x => x > 3`）時預先呼叫
 
 ## 演算法教學
 
@@ -78,7 +79,7 @@ AlgoAlive 是專為 **LeetCode 刷題** 設計的互動式步驟動畫器，支�
 | 堆疊、佇列與堆積 | 堆疊（20、150）· 佇列與雙端佇列（1700、239）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347、1046） |
 | 圖與網格 | 圖的走訪（133、797、785）· Dijkstra 最短路徑（743）· 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
 | 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
-| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191、371）· 例外處理（468、65）· 內建函式（49、896、1984）· 設計類題目（155、232、146）· JavaScript 入門（1、206、155） |
+| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191、371）· 例外處理（468、65）· 內建函式（49、896、1984）· 設計類題目（155、232、146）· JavaScript 入門（1、206、155、1984） |
 
 
 教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
@@ -107,7 +108,7 @@ npm test        # = test:tracer + test:e2e
 | 指令 | 內容 |
 |---|---|
 | `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
-| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
+| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數、try / catch、內建函式）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
 | `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
 
 每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
@@ -150,7 +151,7 @@ src/
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  ├─ graph.ts             # 物件圖 / 鄰接串列 → 節點與邊，以及 visited、queue、path 等走訪狀態
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ tutorials/              # 雙語演算法教學與範例題（34 個主題、70 題）
+├─ tutorials/              # 雙語演算法教學與範例題（34 個主題、71 題）
 ├─ components/             # CodeEditor / ArrayView / GridView / StructureViews / GraphView / CollectionViews / Visualizer
 │                          # Controls / TabBar / Library / TutorialView
 ├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）

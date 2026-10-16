@@ -69,8 +69,14 @@ export interface ExecutionStep {
 }
 
 export interface BuiltinCall {
-  func: 'sum' | 'min' | 'max' | 'sorted' | 'sort' | 'reversed' | 'any' | 'all' | 'enumerate' | 'zip' | 'set' | 'Counter' | 'join';
+  func: 'sum' | 'min' | 'max' | 'sorted' | 'sort' | 'reversed' | 'any' | 'all' | 'enumerate' | 'zip' | 'set' | 'Counter' | 'join' | 'reduce' | 'map' | 'filter';
+  /** 顯示用的名稱（JavaScript 的 Math.max、toSorted、some…）；省略時用 func */
+  label?: string;
   src: string;
+  /** reduce 的初始值 */
+  init?: string;
+  /** sort() 沒有比較函式：JavaScript 預設依字串排序 */
+  byString?: boolean;
   /** 輸入的元素（顯示用，最多 16 個） */
   items?: string[];
   /** 超過 16 個時省略的數量 */

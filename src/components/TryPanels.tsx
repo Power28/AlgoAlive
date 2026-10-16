@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { ArrowDown, Check, CornerDownRight, ShieldAlert, X, Zap } from 'lucide-react';
 import type { ExcFlow, TryFlow } from '../types';
 import { useT } from '../i18n';
+import { useValueFormat } from '../lib/heapContext';
 import { Card } from './StatementPanels';
 
 export const EXC_COLOR = '#ef4743';
@@ -17,6 +18,7 @@ function MatchIcon({ match }: { match: boolean | null }) {
 /** 例外發生：依序比對每個 except，最後被接住 / 經過 finally / 往外拋 */
 export function ExcPanel({ exc, line, func }: { exc: ExcFlow; line: number; func: string }) {
   const t = useT();
+  const fmt = useValueFormat();
   let delay = 0.15;
   const next = () => (delay += 0.18);
   const { outcome } = exc;
@@ -78,7 +80,7 @@ export function ExcPanel({ exc, line, func }: { exc: ExcFlow; line: number; func
           {outcome.kind === 'caught' ? <CornerDownRight size={13} className="mt-px shrink-0" /> : <ArrowDown size={13} className="mt-px shrink-0" />}
           <span>
             {outcome.kind === 'caught'
-              ? t('excCaught', { n: outcome.line })
+              ? t(fmt.handler === 'catch' ? 'excCaughtJs' : 'excCaught', { n: outcome.line })
               : outcome.kind === 'propagate'
                 ? t('excPropagate', { f: func, caller: outcome.func, n: outcome.line })
                 : t('excUncaught')}
@@ -92,13 +94,15 @@ export function ExcPanel({ exc, line, func }: { exc: ExcFlow; line: number; func
 /** try: / except 比對 / else / finally：說明程式為什麼走到這一行 */
 export function TryPanel({ flow, line }: { flow: TryFlow; line: number }) {
   const t = useT();
-  const title = flow.kind === 'except' ? 'except' : flow.kind;
+  const fmt = useValueFormat();
+  const js = fmt.handler === 'catch';
+  const title = flow.kind === 'except' ? fmt.handler : flow.kind;
   const color = flow.kind === 'except' && flow.match === false ? '#9a9a9a' : TRY_COLOR;
   let body;
   if (flow.kind === 'try') {
     body = (
       <>
-        <div>{flow.handlers.length ? t('tryStart') : t('tryOnlyFinally')}</div>
+        <div>{flow.handlers.length ? t(js ? 'tryStartJs' : 'tryStart') : t(js ? 'tryOnlyFinallyJs' : 'tryOnlyFinally')}</div>
         {flow.handlers.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {flow.handlers.map((h, i) => (
@@ -121,7 +125,8 @@ export function TryPanel({ flow, line }: { flow: TryFlow; line: number }) {
     body = (
       <>
         <div className="font-mono text-[13px]">
-          {t('exceptCheck', { type: flow.type, src: flow.src })}
+          {/* JavaScript 的 catch 不比對型別：接住所有例外 */}
+          {js ? t('catchAll', { type: flow.type }) : t('exceptCheck', { type: flow.type, src: flow.src })}
         </div>
         <motion.div
           className="mt-1 flex items-center gap-1.5 text-xs font-semibold"
@@ -131,7 +136,13 @@ export function TryPanel({ flow, line }: { flow: TryFlow; line: number }) {
           transition={{ delay: 0.25, type: 'spring', stiffness: 400, damping: 24 }}
         >
           <MatchIcon match={flow.match} />
-          {flow.match ? (flow.as ? t('exceptYesAs', { name: flow.as }) : t('exceptYes')) : flow.match === false ? t('exceptNo') : t('exceptUnknown')}
+          {flow.match
+            ? flow.as
+              ? t(js ? 'catchYesAs' : 'exceptYesAs', { name: flow.as })
+              : t(js ? 'catchYes' : 'exceptYes')
+            : flow.match === false
+              ? t('exceptNo')
+              : t('exceptUnknown')}
         </motion.div>
       </>
     );
@@ -140,7 +151,7 @@ export function TryPanel({ flow, line }: { flow: TryFlow; line: number }) {
   } else {
     body = (
       <div style={{ color: flow.reraise ? '#fbbf24' : undefined }}>
-        {flow.exc ? t(flow.reraise ? 'finallyReraise' : 'finallyHandled', { exc: flow.exc }) : t('finallyAlways')}
+        {flow.exc ? t(flow.reraise ? 'finallyReraise' : js ? 'finallyHandledJs' : 'finallyHandled', { exc: flow.exc }) : t('finallyAlways')}
       </div>
     );
   }

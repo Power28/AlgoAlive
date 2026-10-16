@@ -54,4 +54,5 @@ export const pythonFormat: ValueFormat = {
   logic: { and: 'and', or: 'or', not: 'not' },
   truthReason,
   shortCircuit: { and: 'shortAnd', or: 'shortOr' },
+  handler: 'except',
 };

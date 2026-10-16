@@ -109,7 +109,15 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
 
   switch (call.func) {
     case 'sum':
-      note = t('bSum');
+    case 'reduce':
+    case 'map':
+      // reduce：每一步之後的累計值；map：每個元素對應出來的值
+      note =
+        call.func === 'reduce'
+          ? t('bReduce', { init: call.init ?? '', elt: call.elt ?? '' })
+          : call.func === 'map'
+            ? t('bMap', { elt: call.elt ?? '' })
+            : t('bSum');
       body = (
         <div className="flex flex-wrap items-start gap-1.5">
           {items.map((v, i) => (
@@ -162,12 +170,13 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
     case 'reversed':
       note =
         call.func === 'reversed' ? (
-          t('bReversed')
+          call.label === 'reverse' ? t('bReverseInPlace', { target: call.target ?? '' }) : t('bReversed')
         ) : (
           <>
             {call.func === 'sort' ? t('bSort', { target: call.target ?? '' }) : t('bSorted')}
             {call.reverse && ` ${t('bReverseOrder')}`}
             {call.keys && <span className="text-ink-400"> · {t('bByKey')}</span>}
+            {call.byString && <span className="text-ink-400"> · {t('bByString')}</span>}
           </>
         );
       body = call.order ? <Reorder call={call} /> : <div className="flex flex-wrap gap-1.5">{items.map((v, i) => <Chip key={i}>{v}</Chip>)}<More n={call.more} /></div>;
@@ -177,7 +186,7 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
       const stopColor = call.func === 'any' ? OK : ERR;
       note = (
         <>
-          {t(call.func === 'any' ? 'bAny' : 'bAll')}
+          {t(call.label === 'some' ? 'bSome' : call.label === 'every' ? 'bEvery' : call.func === 'any' ? 'bAny' : 'bAll')}
           {call.elt && call.elt !== call.var && <span className="text-ink-400"> · {t('bCheck', { elt: call.elt, var: call.var ?? '' })}</span>}
         </>
       );
@@ -253,7 +262,8 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
       break;
     }
     case 'set':
-      note = t('bSet');
+    case 'filter':
+      note = call.func === 'filter' ? t('bFilter', { elt: call.elt ?? '' }) : t('bSet');
       body = (
         <div className="flex flex-wrap gap-1.5">
           {items.map((v, i) => (
@@ -298,12 +308,12 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
       );
       break;
     case 'join':
-      note = call.sep === "''" || !call.sep ? t('bJoinEmpty') : t('bJoin', { sep: call.sep });
+      note = call.sep === "''" || call.sep === '""' || !call.sep ? t('bJoinEmpty') : t('bJoin', { sep: call.sep });
       body = (
         <div className="flex flex-wrap items-center gap-1">
           {items.map((v, i) => (
             <span key={i} className="inline-flex items-center gap-1">
-              {i > 0 && call.sep !== "''" && (
+              {i > 0 && call.sep !== "''" && call.sep !== '""' && (
                 <Below delay={STAGGER * i} color={BUILTIN_COLOR}>
                   {call.sep}
                 </Below>
@@ -324,7 +334,7 @@ export function BuiltinPanel({ call, line }: { call: BuiltinCall; line: number }
   );
 
   return (
-    <Card color={BUILTIN_COLOR} title={`${t('builtinTitle')} · ${call.func}`} line={line} data="data-builtin">
+    <Card color={BUILTIN_COLOR} title={`${t('builtinTitle')} · ${call.label ?? call.func}`} line={line} data="data-builtin">
       <div className="flex items-start gap-2">
         <Sigma size={15} className="mt-0.5 shrink-0" style={{ color: BUILTIN_COLOR }} />
         <div className="min-w-0 flex-1">

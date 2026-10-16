@@ -43,6 +43,8 @@ export interface ValueFormat {
   truthReason: (v: Value) => StringKey | null;
   /** 短路的說明 */
   shortCircuit: { and: StringKey; or: StringKey };
+  /** 接住例外的關鍵字：except（依型別比對）或 catch（接住所有例外） */
+  handler: 'except' | 'catch';
 }
 
 /** 程式碼中可以當成測試入口的函式 */

@@ -13,7 +13,8 @@
 import { parse } from 'acorn';
 import type { CallHint, CallInfo, ExecutionStep, Heap, StackFrame, TraceResult, Value } from '../../types';
 import { Ctx, Registry, inspect, ser, short } from './serialize.ts';
-import { Analyzer, CardBuilder, Thunks, loopTotal, type LoopSpec, type Read, type StepSpec } from './cards.ts';
+import { Analyzer, CardBuilder, Thunks, loopTotal, type LoopSpec, type Read, type StepSpec, type TrySpec } from './cards.ts';
+import type { ExcFlow, TryFlow } from '../../types';
 
 export const MAX_STEPS = 500;
 const MAX_STDOUT = 10000;
@@ -110,6 +111,8 @@ export interface Instrumented {
   code: string;
   /** 每個記錄點的說明卡片規格（__rt.step 的第三個參數是這裡的索引） */
   specs: StepSpec[];
+  /** 所有 try 敘述（例外流程卡片用） */
+  tries: TrySpec[];
   /** 最外層可以當成測試入口的函式 / 類別（依出現順序） */
   entries: EntryDef[];
 }
@@ -164,6 +167,10 @@ export function instrument(source: string): Instrumented {
     return `__rt.step(${line},${getters},${specs.length - 1},${thunks})`;
   };
 
+  /** try 敘述；tryStack 是目前所在的 try 區塊（同一個函式內，由外而內） */
+  const tries: TrySpec[] = [];
+  let tryStack: number[] = [];
+
   /** break / continue 的目標：由內而外的迴圈與 switch */
   const breakables: { node: N; label?: string; loop: boolean; line: number; src: string }[] = [];
   let pendingLabel: string | undefined;
@@ -192,6 +199,8 @@ export function instrument(source: string): Instrumented {
     if (op) spec.op = op;
     const slices = analyzer.slices(s, tl);
     if (slices.length) spec.slices = slices;
+    const builtins = analyzer.builtins(s, tl);
+    if (builtins.length) spec.builtins = builtins;
     if (s.type === 'BreakStatement' || s.type === 'ContinueStatement') {
       const target = s.label
         ? breakables.find((b) => b.label === s.label.name)
@@ -205,7 +214,11 @@ export function instrument(source: string): Instrumented {
   const testSpec = (test: N, loop: N | null): [StepSpec, Thunks] => {
     const tl = new Thunks();
     const spec: StepSpec = {};
-    if (test) spec.cond = analyzer.cond(test, 'test', tl);
+    if (test) {
+      spec.cond = analyzer.cond(test, 'test', tl);
+      const builtins = analyzer.builtins(test, tl);
+      if (builtins.length) spec.builtins = builtins;
+    }
     if (loop) spec.loop = analyzer.loop(loop, tl);
     return [spec, tl];
   };
@@ -244,12 +257,16 @@ export function instrument(source: string): Instrumented {
     const thisGetter = fn.type !== 'ArrowFunctionExpression' && usesThis(fn.body);
     scopes.push(fnScope);
     fnStack.push({ thisGetter });
+    // 例外不會跨越函式邊界被同一個 try 接住：巢狀函式從空的 try 堆疊開始
+    const outerTries = tryStack;
+    tryStack = [];
     depth++;
     const args = `[${params.map((p: string) => `[${JSON.stringify(p)},()=>${p}]`).join(',')}]`;
     add(fn.body.start + 1, `__rt.enter(${JSON.stringify(name)},${fn.loc.start.line},${args}${thisGetter ? ',()=>this' : ''});try{`, 1, depth);
     add(fn.body.end - 1, `}catch(__e){__rt.exc(__e);throw __e}finally{__rt.leave()}`, 0, depth);
     for (const s of fn.body.body) visitStmt(s);
     depth--;
+    tryStack = outerTries;
     fnStack.pop();
     scopes.pop();
   };
@@ -353,18 +370,44 @@ export function instrument(source: string): Instrumented {
         });
         scopes.pop();
         return;
-      case 'TryStatement':
-        visitStmt(s.block);
-        if (s.handler) {
-          const h = s.handler;
-          if (!h.param) add(h.body.start, '(__e)', 1, depth);
-          // 使用者的 catch 不能吞掉「超過步數上限」的中止訊號
-          const errName = h.param?.type === 'Identifier' ? h.param.name : h.param ? null : '__e';
-          if (errName) add(h.body.start + 1, `__rt.guard(${errName});`, 1, depth + 1);
-          visitStmts(h.body.body, [...patternNames(h.param), ...blockNames(h.body.body)]);
+      case 'TryStatement': {
+        const h = s.handler;
+        const id = tries.length;
+        const spec: TrySpec = { line, end: s.loc.end.line, parent: tryStack.at(-1) ?? null };
+        if (h) {
+          spec.catchLine = h.loc.start.line;
+          spec.catchSrc = h.param ? `catch (${analyzer.src(h.param)})` : 'catch';
+          if (h.param?.type === 'Identifier') spec.param = h.param.name;
         }
-        if (s.finalizer) visitStmt(s.finalizer);
+        if (s.finalizer) spec.finallyLine = s.finalizer.loc.start.line;
+        tries.push(spec);
+        // try 這一行：說明如果出錯會跳到哪裡
+        if (traced) {
+          const flow: TryFlow = { kind: 'try', handlers: h ? [spec.catchSrc!] : [], finally: spec.finallyLine ?? null };
+          add(s.start, `;${step(line, { tryFlow: flow })};`, 1, depth);
+        }
+        tryStack.push(id);
+        visitStmt(s.block);
+        tryStack.pop();
+        if (h) {
+          if (!h.param) add(h.body.start, '(__e)', 1, depth);
+          // 例外被接住：記錄例外與 catch 這一行（使用者的 catch 也不能吞掉「超過步數上限」的中止訊號）
+          const errName = h.param?.type === 'Identifier' ? h.param.name : h.param ? null : '__e';
+          if (errName) {
+            const catchStep = traced ? `${step(spec.catchLine!, { tryFlow: { kind: 'except', tryId: id } })};` : '';
+            add(h.body.start + 1, `__rt.caught(${errName},${id});${catchStep}`, 1, depth + 1);
+          }
+          visitStmts(h.body.body, [...patternNames(h.param), ...blockNames(h.body.body)]);
+        } else if (s.finalizer && traced) {
+          // try / finally：例外經過時先記錄再原樣丟出（行為不變）
+          add(s.block.end, `catch(__x){__rt.passing(__x,${id});throw __x}`, 1, depth);
+        }
+        if (s.finalizer) {
+          if (traced) add(s.finalizer.start + 1, `;${step(spec.finallyLine!, { tryFlow: { kind: 'finally', tryId: id } })};`, 1, depth + 1);
+          visitStmt(s.finalizer);
+        }
         return;
+      }
       case 'LabeledStatement':
         pendingLabel = s.label.name;
         visitStmt(s.body);
@@ -444,7 +487,7 @@ export function instrument(source: string): Instrumented {
   }
   out += source.slice(last);
 
-  return { code: out, specs, entries: findEntries(ast, comments) };
+  return { code: out, specs, tries, entries: findEntries(ast, comments) };
 }
 
 /** 最外層的函式、指定成函式的變數、類別，以及前面 JSDoc 的參數型別 */
@@ -496,6 +539,10 @@ interface Frame {
   entered: boolean;
   returned: boolean;
   raised: boolean;
+  /** 這個 frame 已經記錄過的例外（同一個例外一路經過 finally、catch 只記一次） */
+  excRecorded?: unknown;
+  /** 目前處理中的例外：經過哪些 try、被哪個 catch 接住 */
+  pending?: { error: unknown; route: number[]; catcher: number | null; caught: boolean };
 }
 
 /** 步數超過上限時的中止訊號（使用者的 catch 會重新拋出它） */
@@ -508,6 +555,7 @@ export class JsRuntime {
   private registry = new Registry();
   /** 每個記錄點的說明卡片規格（由 instrument 產生） */
   specs: StepSpec[] = [];
+  tries: TrySpec[] = [];
   /** 設計題：目前第幾個操作與已完成的輸出 */
   design: { index: number; outputs: string[] } | null = null;
   enabled = false;
@@ -601,6 +649,11 @@ export class JsRuntime {
     this.lastLine = line;
     // 已經離開的迴圈（目前這一行不在迴圈範圍內）
     frame.loops = frame.loops.filter((l) => line >= l.spec.start && line <= l.spec.end);
+    // 已經離開處理例外的 try：之前的例外不再相關
+    if (frame.pending) {
+      const outer = this.tries[frame.pending.route.at(-1) ?? -1];
+      if (!outer || line < outer.line || line > outer.end) frame.pending = undefined;
+    }
     const spec = specIndex === undefined ? undefined : this.specs[specIndex];
     // 子運算式的值：每個 thunk 只求值一次，失敗（null 的屬性、暫時性死區…）就當成無法得知
     const cache = new Map<number, { ok: boolean; v: unknown }>();
@@ -643,6 +696,14 @@ export class JsRuntime {
           if (slices.length) out.slices = slices;
         }
         if (spec.jump) out.jump = spec.jump;
+        if (spec.builtins) {
+          const calls = cards.builtins(spec.builtins);
+          if (calls.length) out.builtins = calls;
+        }
+        if (spec.tryFlow) {
+          const flow = this.tryFlow(frame, spec.tryFlow);
+          if (flow) out.tryFlow = flow;
+        }
         // 迴圈條件為 false：最後一次檢查，迴圈即將結束
         if (spec.loop && out.condition?.result === false) {
           const active = frame.loops.find((l) => l.spec.line === spec.loop!.line);
@@ -689,11 +750,105 @@ export class JsRuntime {
     return value;
   }
 
+  /** 從 tryId 開始由內往外：經過的 try，直到第一個有 catch 的 */
+  private route(tryId: number | null): { ids: number[]; catcher: number | null } {
+    const ids: number[] = [];
+    for (let t = tryId; t !== null; t = this.tries[t].parent) {
+      ids.push(t);
+      if (this.tries[t].catchLine !== undefined) return { ids, catcher: t };
+    }
+    return { ids, catcher: null };
+  }
+
+  /** 例外發生：記錄一次「例外」步驟（經過的 try、被哪裡接住或往外拋） */
+  private recordExc(frame: Frame, e: unknown, tryId: number | null) {
+    const { ids, catcher } = this.route(tryId);
+    frame.pending = { error: e, route: ids, catcher, caught: false };
+    frame.raised = catcher === null;
+    if (frame.excRecorded === e) return;
+    frame.excRecorded = e;
+    if (!this.enabled) return;
+    const flow: ExcFlow = {
+      type: e instanceof Error ? e.name : 'Uncaught',
+      message: e instanceof Error ? e.message : short(e, 40),
+      route: ids.map((t) => {
+        const spec = this.tries[t];
+        const caughtHere = t === catcher;
+        return {
+          line: spec.line,
+          handlers: spec.catchLine !== undefined ? [{ line: spec.catchLine, src: spec.catchSrc!, match: true }] : [],
+          finally: caughtHere ? null : (spec.finallyLine ?? null),
+        };
+      }),
+      outcome: { kind: 'uncaught' },
+    };
+    if (catcher !== null) flow.outcome = { kind: 'caught', line: this.tries[catcher].catchLine! };
+    else {
+      const caller = this.frames.at(-2);
+      if (caller) flow.outcome = { kind: 'propagate', func: caller.func, line: caller.line };
+    }
+    this.record('exception', { exception: describe(e), exc: flow });
+  }
+
+  /** 例外離開函式（函式外層的 catch） */
   exc(e: unknown) {
     const frame = this.frames.at(-1);
-    if (!frame || e instanceof StopSignal || frame.raised) return;
-    frame.raised = true;
-    if (this.enabled) this.record('exception', { exception: describe(e) });
+    if (!frame || e instanceof StopSignal) return;
+    if (frame.excRecorded === e) {
+      frame.raised = true;
+      return;
+    }
+    if (frame.raised) return;
+    this.recordExc(frame, e, null);
+  }
+
+  /** 例外經過沒有 catch 的 try（try / finally） */
+  passing(e: unknown, tryId: number) {
+    const frame = this.frames.at(-1);
+    if (!frame || e instanceof StopSignal) return;
+    this.recordExc(frame, e, tryId);
+  }
+
+  /** 例外被 catch 接住 */
+  caught(e: unknown, tryId: number) {
+    if (e instanceof StopSignal) throw e;
+    const frame = this.frames.at(-1);
+    if (!frame) return;
+    if (frame.excRecorded !== e) this.recordExc(frame, e, tryId);
+    frame.pending = { ...(frame.pending ?? { route: [tryId] }), error: e, catcher: tryId, caught: true };
+    frame.raised = false;
+  }
+
+  /** try / catch / finally 這幾行的說明卡片 */
+  private tryFlow(frame: Frame, flow: NonNullable<StepSpec['tryFlow']>): TryFlow | null {
+    if (flow.kind === 'try') {
+      frame.pending = undefined;
+      return flow;
+    }
+    const spec = this.tries[flow.tryId];
+    const pending = frame.pending;
+    if (flow.kind === 'except') {
+      const e = pending?.error;
+      const info: TryFlow = {
+        kind: 'except',
+        src: spec.catchSrc ?? 'catch',
+        type: e instanceof Error ? e.name : 'Uncaught',
+        message: e instanceof Error ? e.message : short(e, 40),
+        match: true,
+      };
+      if (spec.param) info.as = spec.param;
+      return info;
+    }
+    if (pending && pending.route.includes(flow.tryId)) {
+      const e = pending.error;
+      return {
+        kind: 'finally',
+        exc: describe(e),
+        // 不是接住它的那個 try，或還沒被 catch 處理：finally 結束後例外繼續往外拋
+        reraise: !(pending.caught && pending.catcher === flow.tryId),
+      };
+    }
+    return { kind: 'finally' };
   }
 
   leave() {
@@ -904,6 +1059,7 @@ export function traceJs(code: string, call: string): TraceResult {
   try {
     // 定義使用者的函式；回傳一個在同一個作用域中執行運算式的函式（才看得到 let / const / class）
     rt.specs = inst.specs;
+    rt.tries = inst.tries;
     const factory = new Function('__rt', 'console', `${PRELUDE}\n${inst.code}\n;return [(__src) => eval(__src), { ListNode, TreeNode, _Node, buildList, buildTree, buildGraph }];`);
     const [evaluate, prelude] = factory(rt, rt.console) as [(src: string) => unknown, Record<string, (...a: never[]) => unknown>];
     const parsed = parseCall(call);
