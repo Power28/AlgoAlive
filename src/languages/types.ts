@@ -9,7 +9,7 @@ import type { StringKey } from '../i18n';
  * 再登記到 src/languages/index.ts。追蹤器要輸出與 Python 相同的 TraceResult（每一步的行號、
  * 帶型別標籤的 Value、heap、呼叫堆疊…），視覺化元件就能直接沿用。
  */
-export type LanguageId = 'python';
+export type LanguageId = 'python' | 'javascript';
 
 export type RuntimeStatus = 'loading' | 'ready' | 'running' | 'error';
 

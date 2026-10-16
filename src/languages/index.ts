@@ -1,10 +1,11 @@
 import type { Language, LanguageId } from './types';
 import { python } from './python';
+import { javascript } from './javascript';
 
 export type { Language, LanguageId } from './types';
 
 /** 所有支援的語言；新增語言時在這裡登記 */
-export const LANGUAGES: Record<LanguageId, Language> = { python };
+export const LANGUAGES: Record<LanguageId, Language> = { python, javascript };
 
 export const DEFAULT_LANGUAGE: LanguageId = 'python';
 

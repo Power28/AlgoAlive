@@ -5,12 +5,7 @@ import tracerSource from './tracer.py?raw';
 export const PYODIDE_VERSION = '0.26.2';
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
-export type WorkerRequest = { type: 'run'; id: number; code: string; call: string };
-export type WorkerResponse =
-  | { type: 'ready' }
-  | { type: 'init-error'; message: string }
-  | { type: 'result'; id: number; json: string }
-  | { type: 'run-error'; id: number; message: string };
+import type { WorkerRequest, WorkerResponse } from '../workerRuntime';
 
 interface PyodideAPI {
   runPython(code: string): unknown;

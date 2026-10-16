@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useValueFormat } from '../lib/heapContext';
 import { motion } from 'framer-motion';
 import type { CallTree } from '../lib/callTree';
 import { useT } from '../i18n';
@@ -22,6 +23,7 @@ export const recursionTreeHeight = (tree: CallTree) => Math.min(MAX_HEIGHT, tree
 /** 遞迴樹：到目前為止的所有呼叫，目前這一次亮框、在堆疊上的虛線框、已回傳的標出回傳值 */
 export function RecursionTree({ tree, index, onSeek }: Props) {
   const t = useT();
+  const fmt = useValueFormat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stack = tree.stackIds[index] ?? [];
   const onStack = new Set(stack);
@@ -112,7 +114,7 @@ export function RecursionTree({ tree, index, onSeek }: Props) {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ type: 'spring', stiffness: 500, damping: 22 }}
                   >
-                    {n.raised ? '✗' : `→ ${n.returned ?? 'None'}`}
+                    {n.raised ? '✗' : `→ ${n.returned ?? fmt.none}`}
                   </motion.span>
                 )}
               </motion.button>

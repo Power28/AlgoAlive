@@ -24,7 +24,7 @@ const urlArg = args.includes('--url') ? args[args.indexOf('--url') + 1] : undefi
 
 // ─────────────── 讀取教學範例的 expected ───────────────
 
-const EXAMPLE_RE = /id: '(lc\d+)'.*?call: '((?:[^'\\]|\\.)*)',\s*expected: '((?:[^'\\]|\\.)*)',/gs;
+const EXAMPLE_RE = /id: '((?:lc|js)\d+)'.*?call: '((?:[^'\\]|\\.)*)',\s*expected: '((?:[^'\\]|\\.)*)',/gs;
 const unescape = (s) => s.replace(/\\(.)/g, '$1');
 
 function loadExpected() {
@@ -577,6 +577,42 @@ async function testCallAssist(page) {
   await run();
 }
 
+async function testJavaScript(page) {
+  console.log('JavaScript');
+  // 教學範例的頁籤切換語言：不覆蓋程式碼，改開新的 JavaScript 頁籤
+  await page.click('[role="tab"]');
+  const before = (await tabTitles(page)).length;
+  await page.select('[data-action="language"]', 'javascript');
+  await sleep(300);
+  const opened = await page.evaluate(() => ({
+    badge: !!document.querySelector('[role="tab"][aria-selected="true"] [data-tab-lang="javascript"]'),
+    code: document.querySelector('.monaco-editor')?.innerText.replace(/ /g, ' ').includes('var solve') ?? false,
+  }));
+  const { returned, error } = await runActiveTab(page);
+  const ready = await page.evaluate(() => document.querySelector('[data-runtime="ready"]')?.innerText ?? '');
+  record(
+    'switching an example tab to JavaScript opens a new JS tab that runs',
+    (await tabTitles(page)).length === before + 1 && opened.badge && opened.code && returned === '10' && !error && /JavaScript ready/.test(ready)
+      ? null
+      : `got ${JSON.stringify({ opened, returned, error, ready })}`,
+  );
+  // 沒修改過的空白頁籤：原地切回 Python
+  await page.select('[data-action="language"]', 'python');
+  await sleep(300);
+  const back = await page.evaluate(() => ({
+    badge: !!document.querySelector('[role="tab"][aria-selected="true"] [data-tab-lang]'),
+    code: document.querySelector('.monaco-editor')?.innerText.replace(/ /g, ' ').includes('def solve') ?? false,
+  }));
+  record('an untouched blank tab switches language in place', (await tabTitles(page)).length === before + 1 && !back.badge && back.code ? null : `got ${JSON.stringify(back)}`);
+  await page.click('[role="tab"][aria-selected="true"] button');
+
+  // JavaScript 的值用 JavaScript 的寫法顯示：鏈結串列尾端是 null
+  await openAndStepTo(page, 'javascript', 'js206', 'section', 'ListNode', { keepOpen: true });
+  const end = await page.evaluate(() => document.querySelector('main')?.innerText.match(/→\s*(null|None)/)?.[1] ?? null);
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('JavaScript values use JavaScript literals', end === 'null' ? null : `got ${JSON.stringify(end)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -619,6 +655,7 @@ try {
   await testNegativeBits(page);
   await testStale(page);
   await testCallAssist(page);
+  await testJavaScript(page);
   await testDemo(page);
   await testExamples(page, expected);
 

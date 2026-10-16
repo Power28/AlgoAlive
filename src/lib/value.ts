@@ -43,16 +43,16 @@ export function formatValue(v: Value, heap?: Heap, format: ValueFormat = pythonF
     case 'repr':
       return v.value;
     case 'ref':
-      return formatRef(v.id, v.cls, heap);
+      return formatRef(v.id, v.cls, heap, format);
   }
 }
 
 /** 格子內的精簡顯示：字串不加引號（改用顏色區分）、無限大顯示為 ∞。 */
-export function formatCell(v: Value, heap?: Heap): string {
+export function formatCell(v: Value, heap?: Heap, format: ValueFormat = pythonFormat): string {
   // 容器中的節點：顯示成 (val)
   if (v.type === 'ref') {
     const val = heap?.[v.id]?.fields.val;
-    return val ? `(${formatCell(val)})` : v.cls;
+    return val ? `(${formatCell(val, undefined, format)})` : v.cls;
   }
   if (v.type === 'str') return v.value;
   if (v.type === 'float' && typeof v.value === 'string') {
@@ -60,7 +60,7 @@ export function formatCell(v: Value, heap?: Heap): string {
     if (v.value === '-inf') return '-∞';
   }
   if (v.type === 'bool') return v.value ? 'T' : 'F';
-  return formatValue(v, heap);
+  return formatValue(v, heap, format);
 }
 
 /** 字串拆成字元格子用的 items。 */
@@ -113,7 +113,7 @@ export function refTarget(v: Value | undefined, heap: Heap): string | null {
 
 const MAX_CHAIN = 30;
 
-function formatRef(id: string, cls: string, heap?: Heap): string {
+function formatRef(id: string, cls: string, heap: Heap | undefined, format: ValueFormat): string {
   const obj = heap?.[id];
   if (!heap || !obj) return `${cls}(…)`;
   const kind = nodeKind(obj);
@@ -124,7 +124,7 @@ function formatRef(id: string, cls: string, heap?: Heap): string {
     let cur: string | null = id;
     while (cur && !seen.has(cur) && vals.length < MAX_CHAIN) {
       seen.add(cur);
-      vals.push(formatCell(heap[cur].fields.val ?? { type: 'none' }));
+      vals.push(formatCell(heap[cur].fields.val ?? { type: 'none' }, undefined, format));
       cur = refTarget(heap[cur].fields.next, heap);
     }
     return vals.join(' → ') + (cur ? (seen.has(cur) ? ' ↺' : ' → …') : '');
@@ -141,7 +141,7 @@ function formatRef(id: string, cls: string, heap?: Heap): string {
         continue;
       }
       seen.add(cur);
-      out.push(formatCell(heap[cur].fields.val ?? { type: 'none' }));
+      out.push(formatCell(heap[cur].fields.val ?? { type: 'none' }, undefined, format));
       queue.push(refTarget(heap[cur].fields.left, heap), refTarget(heap[cur].fields.right, heap));
     }
     while (out.at(-1) === 'null') out.pop();
@@ -150,8 +150,8 @@ function formatRef(id: string, cls: string, heap?: Heap): string {
   if (kind === 'trie') return obj.cls;
   if (kind === 'graph') {
     const val = obj.fields.val;
-    return `${obj.cls}(${val ? formatCell(val) : ''})`;
+    return `${obj.cls}(${val ? formatCell(val, undefined, format) : ''})`;
   }
-  const fields = Object.entries(obj.fields).map(([k, x]) => `${k}=${x.type === 'ref' ? `${x.cls}(…)` : formatValue(x)}`);
+  const fields = Object.entries(obj.fields).map(([k, x]) => `${k}=${x.type === 'ref' ? `${x.cls}(…)` : formatValue(x, undefined, format)}`);
   return `${obj.cls}(${fields.join(', ')})`;
 }

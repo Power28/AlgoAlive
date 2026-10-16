@@ -3,7 +3,7 @@ import { analyzeIndexing } from '../../lib/indexing';
 import { analyzeHeaps } from './analysis';
 import { pythonFormat } from './format';
 import { callNeedsHelp, exampleCall, findFunctions } from './functions';
-import { PyodideRuntime } from './runtime';
+import { WorkerRuntime } from '../workerRuntime';
 
 let runtime: LanguageRuntime | null = null;
 
@@ -13,7 +13,7 @@ export const python: Language = {
   runtimeName: 'Python',
   monaco: 'python',
   // 第一次需要時才建立 Worker、開始下載 Pyodide
-  runtime: () => (runtime ??= new PyodideRuntime()),
+  runtime: () => (runtime ??= new WorkerRuntime(() => new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' }), 'Python')),
   format: pythonFormat,
   blank: {
     code: `def solve(nums: List[int]) -> int:

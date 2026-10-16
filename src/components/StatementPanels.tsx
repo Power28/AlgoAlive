@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useValueFormat } from '../lib/heapContext';
 import { motion } from 'framer-motion';
 import { ArrowRightLeft, CornerUpLeft, ListPlus, LogOut } from 'lucide-react';
 import type { CompInfo, ExecutionStep, Heap, MultiAssign } from '../types';
@@ -82,12 +83,13 @@ export function MultiPanel({ multi, line }: { multi: MultiAssign; line: number }
 
 /** 推導式：這一圈的元素、條件、算出的值，以及結果一格一格長出來 */
 export function CompPanel({ comp, line, heap }: { comp: CompInfo; line: number; heap?: Heap }) {
+  const fmt = useValueFormat();
   const t = useT();
   const items =
     comp.result.type === 'dict'
-      ? comp.result.entries.map(([k, v]) => `${formatCell(k, heap)}: ${formatCell(v, heap)}`)
+      ? comp.result.entries.map(([k, v]) => `${formatCell(k, heap, fmt)}: ${formatCell(v, heap, fmt)}`)
       : 'items' in comp.result
-        ? comp.result.items.map((x) => formatCell(x, heap))
+        ? comp.result.items.map((x) => formatCell(x, heap, fmt))
         : [];
   const [open, close] = comp.kind === 'list' ? ['[', ']'] : ['{', '}'];
   return (

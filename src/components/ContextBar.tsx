@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useValueFormat } from '../lib/heapContext';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CornerDownLeft, Repeat } from 'lucide-react';
 import type { ExecutionStep, Heap, LoopInfo } from '../types';
@@ -19,6 +20,7 @@ interface Props {
 
 /** 視覺化最上方的固定高度資訊列：呼叫堆疊、迴圈圈數 */
 export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Props) {
+  const fmt = useValueFormat();
   const t = useT();
   const stackRef = useRef<HTMLDivElement>(null);
   const depth = step.stack?.length ?? 0;
@@ -66,7 +68,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
                         transition={{ type: 'spring', stiffness: 500, damping: 22 }}
                       >
                         <CornerDownLeft size={10} />
-                        {clip(formatValue(step.returnValue!, heap), 18)}
+                        {clip(formatValue(step.returnValue!, heap, fmt), 18)}
                       </motion.span>
                     )}
                   </span>

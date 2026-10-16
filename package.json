@@ -9,13 +9,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "npm run test:tracer && npm run test:e2e",
+    "test": "npm run test:tracer && npm run test:js && npm run test:e2e",
     "test:tracer": "node scripts/python.mjs scripts/check_examples.py",
+    "test:js": "node scripts/check_js.mjs",
     "test:e2e": "node scripts/e2e.mjs",
     "capture": "node scripts/capture.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "acorn": "^8.19.0",
     "framer-motion": "^14.2.0",
     "lucide-react": "^1.56.0",
     "react": "^19.3.0",

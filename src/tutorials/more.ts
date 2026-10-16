@@ -479,4 +479,129 @@ for i, x in enumerate(nums):
       },
     ],
   },
+  {
+    id: 'javascript',
+    category: 'techniques',
+    title: { en: 'JavaScript Basics', zh: 'JavaScript 入門' },
+    tagline: {
+      en: 'The same algorithms in JavaScript: Map / Set, linked lists from JSDoc types, and classes for design problems.',
+      zh: '用 JavaScript 寫同樣的演算法：Map / Set、依 JSDoc 型別建立鏈結串列、用 class 寫設計類題目。',
+    },
+    whenToUse: [
+      { en: 'Pick JavaScript in the language menu above the editor; the LeetCode JavaScript template runs as is.', zh: '在編輯器上方的語言選單選 JavaScript；LeetCode 的 JavaScript 範本可以直接執行。' },
+      { en: 'Test calls work the same way: twoSum([2,7,11,15], 9) or nums = [2,7,11,15], target = 9.', zh: '測試呼叫的寫法相同：twoSum([2,7,11,15], 9) 或 nums = [2,7,11,15], target = 9。' },
+    ],
+    idea: [
+      { en: '`Map` is the hash map: `has`, `get`, `set`. Plain objects work too, but Map keeps number keys as numbers.', zh: '`Map` 就是雜湊表：`has`、`get`、`set`。一般物件也可以，但 Map 的數字 key 不會被轉成字串。' },
+      { en: 'LeetCode marks node parameters with JSDoc (`@param {ListNode} head`), so `head = [1,2,3]` becomes a linked list automatically.', zh: 'LeetCode 用 JSDoc 標記節點參數（`@param {ListNode} head`），所以 `head = [1,2,3]` 會自動變成鏈結串列。' },
+      { en: 'Design problems keep their state on `this` (`this.stack`), shown as variables.', zh: '設計類題目的狀態放在 `this` 上（`this.stack`），會顯示成變數。' },
+    ],
+    complexity: { time: 'same as Python', space: 'same as Python' },
+    pitfalls: [
+      { en: 'Use `===` instead of `==` to avoid type conversion.', zh: '用 `===` 而不是 `==`，避免自動轉型。' },
+      { en: 'Arrays have no negative index: use `arr[arr.length - 1]` (or `arr.at(-1)`) for the last item.', zh: '陣列沒有負數索引：最後一個元素要寫 `arr[arr.length - 1]`（或 `arr.at(-1)`）。' },
+      { en: '`sort()` compares as strings by default — pass `(a, b) => a - b` for numbers.', zh: '`sort()` 預設依字串比較——數字要傳入 `(a, b) => a - b`。' },
+    ],
+    examples: [
+      {
+        id: 'js1',
+        number: 1,
+        title: { en: 'Two Sum (JavaScript)', zh: '兩數之和（JavaScript）' },
+        difficulty: 'easy',
+        language: 'javascript',
+        note: { en: 'The Map remembers each number\'s index; look up `target - nums[i]` before adding the current one.', zh: 'Map 記住每個數字的索引；先查 `target - nums[i]`，再放入目前這個數。' },
+        code: `/**
+ * @param {number[]} nums
+ * @param {number} target
+ * @return {number[]}
+ */
+var twoSum = function(nums, target) {
+    const seen = new Map();
+    for (let i = 0; i < nums.length; i++) {
+        const need = target - nums[i];
+        if (seen.has(need)) {
+            return [seen.get(need), i];
+        }
+        seen.set(nums[i], i);
+    }
+    return [];
+};
+`,
+        call: 'nums = [2,7,11,15], target = 9',
+        expected: '[0, 1]',
+      },
+      {
+        id: 'js206',
+        number: 206,
+        title: { en: 'Reverse Linked List (JavaScript)', zh: '反轉鏈結串列（JavaScript）' },
+        difficulty: 'easy',
+        language: 'javascript',
+        note: { en: '`head = [1,2,3,4,5]` becomes a linked list because of `@param {ListNode} head`.', zh: '因為 `@param {ListNode} head`，`head = [1,2,3,4,5]` 會自動變成鏈結串列。' },
+        code: `/**
+ * Definition for singly-linked list.
+ * function ListNode(val, next) {
+ *     this.val = (val===undefined ? 0 : val)
+ *     this.next = (next===undefined ? null : next)
+ * }
+ */
+/**
+ * @param {ListNode} head
+ * @return {ListNode}
+ */
+var reverseList = function(head) {
+    let prev = null;
+    let curr = head;
+    while (curr) {
+        const next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+};
+`,
+        call: 'head = [1,2,3,4,5]',
+        expected: '5 → 4 → 3 → 2 → 1',
+      },
+      {
+        id: 'js155',
+        number: 155,
+        title: { en: 'Min Stack (JavaScript)', zh: '最小堆疊（JavaScript）' },
+        difficulty: 'medium',
+        language: 'javascript',
+        note: { en: 'A class keeps the state on `this`; the test call is LeetCode\'s two arrays.', zh: '用 class 把狀態放在 `this` 上；測試呼叫是 LeetCode 的兩個陣列。' },
+        code: `class MinStack {
+    constructor() {
+        this.stack = [];
+        this.mins = [];
+    }
+
+    push(val) {
+        this.stack.push(val);
+        if (this.mins.length === 0 || val <= this.mins[this.mins.length - 1]) {
+            this.mins.push(val);
+        }
+    }
+
+    pop() {
+        const val = this.stack.pop();
+        if (val === this.mins[this.mins.length - 1]) {
+            this.mins.pop();
+        }
+    }
+
+    top() {
+        return this.stack[this.stack.length - 1];
+    }
+
+    getMin() {
+        return this.mins[this.mins.length - 1];
+    }
+}
+`,
+        call: '["MinStack","push","push","push","getMin","pop","top","getMin"], [[],[-2],[0],[-3],[],[],[],[]]',
+        expected: '[null, null, null, null, -3, null, 0, -2]',
+      },
+    ],
+  },
 ];

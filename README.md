@@ -6,9 +6,9 @@
 
 [![AlgoAlive 播放 283. Move Zeroes：slow / fast 指針移動與格子交換動畫](docs/move-zeroes.gif)](https://power28.github.io/AlgoAlive/)
 
-AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器。貼上一般的 Python 函式與測試呼叫，按下 **Visualize**，就能一步步看到 list 方格、指針移動、dict 查表與變數變化——不用手動加任何 `print`。
+AlgoAlive 是專為 **LeetCode 刷題** 設計的互動式步驟動畫器，支援 **Python** 與 **JavaScript**。貼上函式與測試呼叫，按下 **Visualize**，就能一步步看到 list 方格、指針移動、dict 查表與變數變化——不用手動加任何 `print`。
 
-全部在瀏覽器內執行（Pyodide / WebAssembly），純靜態網頁即可部署，不需後端。
+全部在瀏覽器內執行（Python 用 Pyodide / WebAssembly，JavaScript 用插樁後在 Web Worker 執行），純靜態網頁即可部署，不需後端。
 
 ## 功能
 
@@ -50,6 +50,16 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 
 ![一般圖：785. Is Graph Bipartite?，節點依 color 著色、目前走的邊以橘色標示](docs/graph.png)
 
+### JavaScript
+
+編輯器上方的「語言」選單可以切換成 JavaScript（已修改的程式碼不會被覆蓋，會改開新頁籤；頁籤上的 **JS** 標籤表示語言）。LeetCode 的 JavaScript 範本可以直接執行：
+
+- 逐行執行、變數、陣列、`Map` / `Set`、物件、呼叫堆疊與遞迴樹、回傳值、例外與 `console.log` 都和 Python 一樣有動畫；`let` / `const` 在宣告之前（暫時性死區）不顯示
+- 測試呼叫的寫法相同（`twoSum([2,7,11,15], 9)`、`nums = [2,7,11,15], target = 9`、一行一個值、設計題的兩個陣列）；參數的 JSDoc 型別是 `@param {ListNode}` / `@param {TreeNode}`（或名稱是 `head` / `root`）時，陣列自動轉成鏈結串列 / 二元樹
+- `class` 寫的設計類題目，`this.stack` 等狀態以變數顯示
+- 值用 JavaScript 的寫法顯示（`null`、`true`、`"字串"`）
+- 條件判斷、計算過程、容器操作等說明卡片目前只有 Python 版
+
 ## 演算法教學
 
 ![演算法教學：滑動視窗](docs/tutorials.png)
@@ -67,7 +77,7 @@ AlgoAlive 是專為 **Python LeetCode 刷題** 設計的互動式步驟動畫器
 | 堆疊、佇列與堆積 | 堆疊（20、150）· 佇列與雙端佇列（1700、239）· 單調堆疊（739、496）· 堆積 / 優先佇列（215、347、1046） |
 | 圖與網格 | 圖的走訪（133、797、785）· Dijkstra 最短路徑（743）· 網格 BFS（200）· 拓撲排序（207）· 並查集（547） |
 | 動態規劃 | 一維 DP（70、198、322）· 二維 DP（62、1143） |
-| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191、371）· 例外處理（468、65）· 內建函式（49、896、1984）· 設計類題目（155、232、146） |
+| 其他技巧 | 貪心法（121、55）· 遞迴與記憶化（509、1137）· 回溯法（78、46）· 區間問題（56）· 位元運算（136、191、371）· 例外處理（468、65）· 內建函式（49、896、1984）· 設計類題目（155、232、146）· JavaScript 入門（1、206、155） |
 
 
 教學內容在 [src/tutorials/](src/tutorials/)，新增主題只要照 `Tutorial` 型別加一筆資料。
@@ -96,6 +106,7 @@ npm test        # = test:tracer + test:e2e
 | 指令 | 內容 |
 |---|---|
 | `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
+| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
 | `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
 
 每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
@@ -116,21 +127,27 @@ src/
 ├─ languages/
 │  ├─ types.ts             # Language 介面：執行環境、值的格式、程式碼分析、測試呼叫的輔助
 │  ├─ index.ts             # 語言註冊表（getLanguage）；頁籤與教學範例都記錄自己的語言
-│  └─ python/
-│     ├─ index.ts          # Python 的 Language 實作
-│     ├─ tracer.py         # sys.settrace 追蹤器 + 帶型別標籤的序列化
-│     ├─ pyodide.worker.ts # Web Worker：載入 Pyodide (CDN v0.26.2) 並執行 tracer
-│     ├─ runtime.ts        # 主執行緒端：Worker 生命週期、逾時重啟、狀態通知
-│     ├─ format.ts         # Python repr 的字面值寫法（None、True、'字串'、set()…）
-│     ├─ functions.ts      # 找出 def / class Solution 的方法、產生範例測試呼叫
-│     └─ analysis.ts       # heapq 操作的 list 畫成堆積樹
+│  ├─ workerRuntime.ts     # 主執行緒端：Worker 生命週期、逾時重啟、狀態通知（各語言共用）
+│  ├─ python/
+│  │  ├─ index.ts          # Python 的 Language 實作
+│  │  ├─ tracer.py         # sys.settrace 追蹤器 + 帶型別標籤的序列化
+│  │  ├─ pyodide.worker.ts # Web Worker：載入 Pyodide (CDN v0.26.2) 並執行 tracer
+│  │  ├─ format.ts         # Python repr 的字面值寫法（None、True、'字串'、set()…）
+│  │  ├─ functions.ts      # 找出 def / class Solution 的方法、產生範例測試呼叫
+│  │  └─ analysis.ts       # heapq 操作的 list 畫成堆積樹
+│  └─ javascript/
+│     ├─ index.ts          # JavaScript 的 Language 實作
+│     ├─ tracer.ts         # Acorn 解析 + 插樁：每個敘述前記錄一步，輸出與 Python 相同的 TraceResult
+│     ├─ js.worker.ts      # Web Worker：執行插樁後的程式（第一次執行 JavaScript 才載入）
+│     ├─ format.ts         # null、true、"字串"、Set {…}
+│     └─ functions.ts      # 找出 function / var f = function / 箭頭函式與 JSDoc 型別
 ├─ lib/
 │  ├─ value.ts             # 值的格式化（依語言的 ValueFormat）、型別判斷、2D 格子偵測
 │  ├─ cellKeys.ts          # 跨步驟追蹤 list 格子身分（讓 swap 變成移動動畫）
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  ├─ graph.ts             # 物件圖 / 鄰接串列 → 節點與邊，以及 visited、queue、path 等走訪狀態
 │  └─ pointers.ts          # 指針變數偵測與配色
-├─ tutorials/              # 雙語演算法教學與範例題（33 個主題、67 題）
+├─ tutorials/              # 雙語演算法教學與範例題（34 個主題、70 題）
 ├─ components/             # CodeEditor / ArrayView / GridView / StructureViews / GraphView / CollectionViews / Visualizer
 │                          # Controls / TabBar / Library / TutorialView
 ├─ hooks/                  # usePlayback（播放）、useTabs（頁籤 + localStorage）
@@ -168,7 +185,7 @@ interface ExecutionStep {
 - **程式碼分析**：`analyzeIndexing`、`analyzeHeaps`、`findFunctions` / `exampleCall` / `callNeedsHelp`（測試呼叫的建議）
 - **`blank`、`callPlaceholder`、`callFormats`**：新頁籤的範本與測試呼叫的格式說明
 
-再到 [`src/languages/index.ts`](src/languages/index.ts) 登記即可。頁籤與教學範例都有 `language` 欄位（省略時為 Python）。
+再到 [`src/languages/index.ts`](src/languages/index.ts) 登記即可。頁籤與教學範例都有 `language` 欄位（省略時為 Python）。[`src/languages/javascript/`](src/languages/javascript/) 是第二個語言的完整範例。
 
 ### 測試呼叫的寫法
 

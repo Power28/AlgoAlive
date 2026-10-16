@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useValueFormat } from '../lib/heapContext';
 import { motion } from 'framer-motion';
 import { Boxes } from 'lucide-react';
 import type { ExecutionStep } from '../types';
@@ -25,6 +26,7 @@ export function designStarts(steps: ExecutionStep[], count: number): number[] {
 
 /** 設計類題目：依序執行的操作；目前這個亮起來，做完的標出輸出 */
 export function DesignTimeline({ design, step }: { design: DesignInfo; step: ExecutionStep }) {
+  const fmt = useValueFormat();
   const t = useT();
   const current = step.design?.index ?? 0;
   const outputs = step.design?.outputs ?? [];
@@ -44,7 +46,7 @@ export function DesignTimeline({ design, step }: { design: DesignInfo; step: Exe
 
   // 方法剛回傳、輸出還沒記進 outputs 時，先顯示這一步的回傳值
   const pending = step.event === 'return' && step.returnValue
-    ? step.returnValue.type === 'none' ? 'null' : formatValue(step.returnValue, step.heap)
+    ? step.returnValue.type === 'none' ? 'null' : formatValue(step.returnValue, step.heap, fmt)
     : undefined;
 
   return (

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useValueFormat } from '../lib/heapContext';
 import type { Heap, LogicNode, Value } from '../types';
 import { formatValue } from '../lib/value';
 import { useT, type StringKey } from '../i18n';
@@ -50,6 +51,7 @@ function truthReason(value: Value | undefined): StringKey | null {
 const clip = (s: string, n = 32) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 function Leaf({ node, heap }: { node: LogicNode; heap?: Heap }) {
+  const fmt = useValueFormat();
   const t = useT();
   if (node.skipped) {
     return (
@@ -60,7 +62,7 @@ function Leaf({ node, heap }: { node: LogicNode; heap?: Heap }) {
     );
   }
   const reason = node.op === 'leaf' ? truthReason(node.value) : null;
-  const valueText = node.op === 'leaf' && node.value && node.display === node.src ? clip(formatValue(node.value, heap)) : null;
+  const valueText = node.op === 'leaf' && node.value && node.display === node.src ? clip(formatValue(node.value, heap, fmt)) : null;
   return (
     <motion.div
       className="flex flex-wrap items-center gap-2 rounded-md border border-ink-700 bg-ink-900/60 px-2 py-1"
@@ -83,6 +85,7 @@ function Leaf({ node, heap }: { node: LogicNode; heap?: Heap }) {
 }
 
 function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valueContext: boolean }) {
+  const fmt = useValueFormat();
   const t = useT();
   const op = node.op as 'and' | 'or' | 'not';
   const style = GATE_STYLE[op];
@@ -125,7 +128,7 @@ function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valu
           <span className="font-mono font-semibold" style={{ color: style.color }}>
             {op} =
           </span>
-          {showValue && <code className="font-mono font-semibold text-ink-100">{clip(formatValue(node.value!, heap), 40)}</code>}
+          {showValue && <code className="font-mono font-semibold text-ink-100">{clip(formatValue(node.value!, heap, fmt), 40)}</code>}
           <ResultBadge result={node.truthy} size="sm" />
         </motion.div>
       )}
