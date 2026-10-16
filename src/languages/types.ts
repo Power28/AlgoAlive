@@ -1,4 +1,4 @@
-import type { TraceResult } from '../types';
+import type { TraceResult, Value } from '../types';
 import type { IndexMap } from '../lib/indexing';
 import type { StringKey } from '../i18n';
 
@@ -37,6 +37,12 @@ export interface ValueFormat {
   str: (s: string) => string;
   /** 容器：parts 是已格式化的元素（dict 為 "k: v"），more 是被截斷的數量提示 */
   container: (type: 'list' | 'tuple' | 'set' | 'deque' | 'dict', parts: string[], more: string) => string;
+  /** 邏輯運算子的寫法：and / or / not，或 && / || / ! */
+  logic: { and: string; or: string; not: string };
+  /** 非布林值為什麼是真 / 假（Python 的空 list 為 False；JavaScript 的 [] 為 true） */
+  truthReason: (v: Value) => StringKey | null;
+  /** 短路的說明 */
+  shortCircuit: { and: StringKey; or: StringKey };
 }
 
 /** 程式碼中可以當成測試入口的函式 */

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import { useValueFormat } from '../lib/heapContext';
-import type { Heap, LogicNode, Value } from '../types';
+import type { Heap, LogicNode } from '../types';
 import { formatValue } from '../lib/value';
-import { useT, type StringKey } from '../i18n';
+import { useT } from '../i18n';
 import { ResultBadge } from './ConditionPanel';
 
 /** 每個求值步驟之間的動畫間隔（秒） */
@@ -23,30 +23,6 @@ function lastOrder(node: LogicNode): number {
   return Math.max(own, ...(node.children ?? []).map(lastOrder));
 }
 
-/** 非布林值的真假說明，例如 [] → 空的容器為 False */
-function truthReason(value: Value | undefined): StringKey | null {
-  if (!value || value.type === 'bool') return null;
-  switch (value.type) {
-    case 'none':
-      return 'truthNone';
-    case 'int':
-    case 'float':
-      return Number(value.value) === 0 ? 'truthZero' : 'truthNonZero';
-    case 'str':
-      return value.value === '' ? 'truthEmptyStr' : 'truthNonEmpty';
-    case 'list':
-    case 'tuple':
-    case 'set':
-    case 'deque':
-      return value.items.length === 0 ? 'truthEmpty' : 'truthNonEmpty';
-    case 'dict':
-      return value.entries.length === 0 ? 'truthEmpty' : 'truthNonEmpty';
-    case 'ref':
-      return 'truthObject';
-    default:
-      return null;
-  }
-}
 
 const clip = (s: string, n = 32) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
@@ -61,7 +37,7 @@ function Leaf({ node, heap }: { node: LogicNode; heap?: Heap }) {
       </div>
     );
   }
-  const reason = node.op === 'leaf' ? truthReason(node.value) : null;
+  const reason = node.op === 'leaf' && node.value && node.value.type !== 'bool' ? fmt.truthReason(node.value) : null;
   const valueText = node.op === 'leaf' && node.value && node.display === node.src ? clip(formatValue(node.value, heap, fmt)) : null;
   return (
     <motion.div
@@ -98,11 +74,11 @@ function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valu
       <div className="flex flex-col gap-1">
         {children.map((child, i) => (
           <div key={i} className="flex flex-col gap-1">
-            {op === 'not' && <GateChip label="not" color={style.color} />}
+            {op === 'not' && <GateChip label={fmt.logic.not} color={style.color} />}
             <LogicView node={child} heap={heap} valueContext={false} />
             {op !== 'not' && i < children.length - 1 && (
               <div className="flex items-center gap-2">
-                <GateChip label={op} color={style.color} />
+                <GateChip label={fmt.logic[op]} color={style.color} />
                 {node.shortCircuitAt === i && (
                   <motion.span
                     className="text-[10px] text-ink-400"
@@ -110,7 +86,7 @@ function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valu
                     animate={{ opacity: 1 }}
                     transition={{ delay: ((child.order ?? lastOrder(child)) + 1) * STEP }}
                   >
-                    ⚡ {t(op === 'and' ? 'shortAnd' : 'shortOr')}
+                    ⚡ {t(fmt.shortCircuit[op === 'and' ? 'and' : 'or'])}
                   </motion.span>
                 )}
               </div>
@@ -126,7 +102,7 @@ function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valu
           transition={{ delay: done, type: 'spring', stiffness: 500, damping: 24 }}
         >
           <span className="font-mono font-semibold" style={{ color: style.color }}>
-            {op} =
+            {fmt.logic[op]} =
           </span>
           {showValue && <code className="font-mono font-semibold text-ink-100">{clip(formatValue(node.value!, heap, fmt), 40)}</code>}
           <ResultBadge result={node.truthy} size="sm" />

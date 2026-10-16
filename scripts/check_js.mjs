@@ -51,7 +51,8 @@ check('LeetCode example input runs the function', () => {
   if (JSON.stringify(ints(r.returnValue)) !== '[0,1]') return `returned ${JSON.stringify(r.returnValue)}`;
   if (r.call?.display !== 'twoSum([2, 7, 11, 15], 9)') return `call display ${r.call?.display}`;
   const lines = r.steps.map((s) => `${s.event}:${s.lineNumber}`).join(' ');
-  if (lines !== 'line:7 line:8 line:9 line:10 line:11 line:8 line:9 line:10 return:10') return `steps ${lines}`;
+  // if (…) return …; 同一行：先判斷條件，再執行 return（各自有說明卡片）
+  if (lines !== 'line:7 line:8 line:9 line:10 line:11 line:8 line:9 line:10 line:10 return:10') return `steps ${lines}`;
   const first = r.steps[0];
   if (!first.entered || Object.keys(first.variables).join(',') !== 'nums,target') return `first step ${JSON.stringify(first.variables)}`;
   const map = r.steps[5].variables.seen;
@@ -167,6 +168,83 @@ check('friendly hints for the test call', () => {
   if (empty?.kind !== 'empty') return `empty hint ${JSON.stringify(empty)}`;
   const args = traceJs(TWO_SUM, 'foo = 1, bar = 2').error?.hint;
   if (args?.kind !== 'args') return `args hint ${JSON.stringify(args)}`;
+});
+
+// ─────────────── 說明卡片 ───────────────
+
+console.log('\nJavaScript cards');
+const CARDS = `function f(nums, target) {
+    let lo = 0, hi = nums.length - 1;
+    const seen = new Map();
+    const set = new Set([1]);
+    const count = {};
+    const stack = [];
+    while (lo <= hi && nums.length > 0) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (nums[mid] === target) break;
+        seen.set(nums[mid], mid);
+        set.add(nums[mid]);
+        count[nums[mid]] = (count[nums[mid]] || 0) + 1;
+        stack.push(nums[mid]);
+        lo += 1;
+    }
+    [nums[0], nums[1]] = [nums[1], nums[0]];
+    const top = stack.pop();
+    if (stack.length && stack.pop() === top) lo ^= 3;
+    const part = nums.slice(1, 3);
+    for (const x of nums) {
+        if (x > 3) continue;
+        stack.unshift(x);
+    }
+    for (let i = 0; i < 2; i++) {}
+    return !stack.length || part;
+}`;
+const C = traceJs(CARDS, 'f([1, 3, 5, 7, 9], 7)');
+const at = (line, key, n = 0) => C.steps.filter((s) => s.lineNumber === line && s[key])[n]?.[key];
+
+check('conditions use JavaScript operators and short-circuit', () => {
+  const c = at(7, 'condition');
+  if (c?.display !== '0 <= 4 && 5 > 0' || c.result !== true || c.tree?.op !== 'and' || c.parts.length !== 2) return `while test ${JSON.stringify(c)}`;
+  // stack.pop() 會修改資料：不預先求值
+  const impure = at(18, 'condition');
+  const cmp = impure?.parts.find((p) => p.kind === 'cmp');
+  if (!impure || cmp?.result !== null) return `impure condition ${JSON.stringify(impure)}`;
+  const ret = at(25, 'condition');
+  if (ret?.display !== '!false || …' && ret?.display !== '!true || …' && !/^!/.test(ret?.display ?? '')) return `return condition ${JSON.stringify(ret?.display)}`;
+});
+
+check('calculations reduce step by step (parentheses, +=, bits)', () => {
+  const mid = at(8, 'calc');
+  if (JSON.stringify(mid?.stages) !== '["Math.floor((0 + 4) / 2)","Math.floor(4 / 2)","Math.floor(2)","2"]' || mid.target !== 'mid') return `mid ${JSON.stringify(mid)}`;
+  const aug = at(14, 'calc');
+  if (aug?.kind !== 'aug' || JSON.stringify(aug.stages) !== '["0 + 1","1"]') return `lo += 1 ${JSON.stringify(aug)}`;
+  const counter = at(12, 'calc');
+  if (JSON.stringify(counter?.stages) !== '["(undefined || 0) + 1","0 + 1","1"]') return `count ${JSON.stringify(counter?.stages)}`;
+});
+
+check('container ops are described before they run', () => {
+  const ops = C.steps.filter((s) => s.op).map((s) => `${s.op.kind}:${s.op.target}:${s.op.display ?? ''}:${s.op.index ?? ''}:${s.op.key ?? ''}:${s.op.existed ?? ''}`);
+  // 迴圈跑兩圈（mid 都是 2）：第二圈的 key / 元素已經存在
+  const want = [
+    'setitem:seen:2::5:false', 'add:set:5:::false', 'setitem:count:1::5:false', 'push:stack:5:0::',
+    'setitem:seen:2::5:true', 'add:set:5:::true', 'setitem:count:2::5:true', 'push:stack:5:1::',
+    'pop:stack:5:1::', 'pushleft:stack:3:0::', 'pushleft:stack:1:0::',
+  ];
+  if (JSON.stringify(ops) !== JSON.stringify(want)) return `ops ${JSON.stringify(ops)}`;
+});
+
+check('destructuring swap, slices, continue and loop passes', () => {
+  const multi = at(16, 'multi');
+  if (!multi?.swap || JSON.stringify(multi.pairs.map((p) => [p.target, p.display, p.targetLoc])) !== '[["nums[0]","3",{"var":"nums","index":0}],["nums[1]","1",{"var":"nums","index":1}]]') return `multi ${JSON.stringify(multi)}`;
+  const slice = at(19, 'slices')?.[0];
+  if (JSON.stringify(slice) !== '{"var":"nums","src":"nums.slice(1, 3)","start":1,"stop":3,"step":1,"display":"[1, 5]"}') return `slice ${JSON.stringify(slice)}`;
+  const jump = at(21, 'jump');
+  if (JSON.stringify(jump) !== '{"kind":"continue","loopLine":20,"loopSrc":"for (const x of nums)"}') return `jump ${JSON.stringify(jump)}`;
+  const forOf = C.steps.filter((s) => s.lineNumber === 20).map((s) => s.loops?.at(-1)?.iteration);
+  if (JSON.stringify(forOf) !== '[1,2,3,4,5]' || at(20, 'loops')[0].total !== 5 || at(20, 'loops')[0].seq !== 'nums') return `for…of passes ${JSON.stringify(forOf)}`;
+  const counted = C.steps.filter((s) => s.lineNumber === 24).map((s) => `${s.loops?.[0]?.iteration}/${s.loops?.[0]?.total}${s.loops?.[0]?.done ? ' done' : ''}`);
+  if (JSON.stringify(counted) !== '["1/2","2/2","3/2 done"]') return `for passes ${JSON.stringify(counted)}`;
+  if (C.steps.some((s) => s.lineNumber === 25 && s.loops)) return 'loops should end when leaving the loop';
 });
 
 // ─────────────── JavaScript 教學範例：回傳值依前端 jsFormat 的規則格式化後，等於 expected ───────────────

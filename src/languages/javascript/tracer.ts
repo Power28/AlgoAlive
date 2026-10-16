@@ -12,13 +12,11 @@
  */
 import { parse } from 'acorn';
 import type { CallHint, CallInfo, ExecutionStep, Heap, StackFrame, TraceResult, Value } from '../../types';
+import { Ctx, Registry, inspect, ser, short } from './serialize.ts';
+import { Analyzer, CardBuilder, Thunks, loopTotal, type LoopSpec, type Read, type StepSpec } from './cards.ts';
 
 export const MAX_STEPS = 500;
-const MAX_ITEMS = 100;
-const MAX_DEPTH = 5;
-const MAX_STR = 200;
 const MAX_STDOUT = 10000;
-const MAX_NODES = 120;
 
 // Acorn 的 AST 節點：這裡只讀取 ESTree 的欄位
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,6 +108,8 @@ function usesThis(body: N): boolean {
 
 export interface Instrumented {
   code: string;
+  /** 每個記錄點的說明卡片規格（__rt.step 的第三個參數是這裡的索引） */
+  specs: StepSpec[];
   /** 最外層可以當成測試入口的函式 / 類別（依出現順序） */
   entries: EntryDef[];
 }
@@ -153,7 +153,62 @@ export function instrument(source: string): Instrumented {
     if (fnStack.at(-1)?.thisGetter) parts.push(`["this",()=>this]`);
     return `[${parts.join(',')}]`;
   };
-  const step = (line: number) => `__rt.step(${line},${visibleGetters()})`;
+  const analyzer = new Analyzer(source);
+  const specs: StepSpec[] = [];
+  /** 記錄一步；有說明卡片時一併傳入規格編號與 thunk（在原本的作用域中求值子運算式） */
+  const step = (line: number, spec?: StepSpec, tl?: Thunks) => {
+    const getters = visibleGetters();
+    if (!spec || !Object.keys(spec).length) return `__rt.step(${line},${getters})`;
+    specs.push(spec);
+    const thunks = `[${(tl?.codes ?? []).map((c) => `()=>(${c})`).join(',')}]`;
+    return `__rt.step(${line},${getters},${specs.length - 1},${thunks})`;
+  };
+
+  /** break / continue 的目標：由內而外的迴圈與 switch */
+  const breakables: { node: N; label?: string; loop: boolean; line: number; src: string }[] = [];
+  let pendingLabel: string | undefined;
+  const loopHeader = (s: N) =>
+    s.type === 'DoWhileStatement' ? `do … while (${analyzer.src(s.test)})` : source.slice(s.start, s.body.start).trim().replace(/\{$/, '').trim();
+  const withBreakable = (s: N, loop: boolean, body: () => void) => {
+    breakables.push({ node: s, label: pendingLabel, loop, line: s.loc.start.line, src: loop ? loopHeader(s) : '' });
+    pendingLabel = undefined;
+    body();
+    breakables.pop();
+  };
+
+  /** 一般敘述的卡片：條件、計算、容器操作、解構交換、切片、break / continue */
+  const stmtSpec = (s: N): [StepSpec, Thunks] => {
+    const tl = new Thunks();
+    const spec: StepSpec = {};
+    const multi = analyzer.multi(s, tl);
+    if (multi) spec.multi = multi;
+    const cond = analyzer.valueCond(s, tl);
+    if (cond) spec.cond = cond;
+    else if (!multi) {
+      const calc = analyzer.calc(s, tl);
+      if (calc) spec.calc = calc;
+    }
+    const op = analyzer.op(s, tl);
+    if (op) spec.op = op;
+    const slices = analyzer.slices(s, tl);
+    if (slices.length) spec.slices = slices;
+    if (s.type === 'BreakStatement' || s.type === 'ContinueStatement') {
+      const target = s.label
+        ? breakables.find((b) => b.label === s.label.name)
+        : [...breakables].reverse().find((b) => b.loop || s.type === 'BreakStatement');
+      if (target?.loop) spec.jump = { kind: s.type === 'BreakStatement' ? 'break' : 'continue', loopLine: target.line, loopSrc: target.src };
+    }
+    return [spec, tl];
+  };
+
+  /** 迴圈 / if 的條件：條件卡片，迴圈另外記錄圈數 */
+  const testSpec = (test: N, loop: N | null): [StepSpec, Thunks] => {
+    const tl = new Thunks();
+    const spec: StepSpec = {};
+    if (test) spec.cond = analyzer.cond(test, 'test', tl);
+    if (loop) spec.loop = analyzer.loop(loop, tl);
+    return [spec, tl];
+  };
 
   /** 非區塊的單一敘述（if (x) return y;）先包上大括號，才能在前面插入記錄 */
   const ensureBlock = (stmt: N) => {
@@ -208,17 +263,14 @@ export function instrument(source: string): Instrumented {
   const inFunction = () => fnStack.length > 0;
 
   /** 條件 / 判斷值前面插入記錄：(__rt.step(...), 原本的運算式) */
-  const wrapTest = (expr: N, line: number) => {
-    add(expr.start, `(${step(line)},`, 1, depth);
+  const wrapTest = (expr: N, line: number, spec?: [StepSpec, Thunks]) => {
+    add(expr.start, `(${step(line, spec?.[0], spec?.[1])},`, 1, depth);
     add(expr.end, ')', 0, depth);
   };
 
-  /** if (x) return y; 寫在同一行：本體第一個敘述與條件同一行時不另外記錄（與 Python 的 line 事件相同） */
-  const sameLineAsIf = new Set<N>();
-
   const visitStmt = (s: N) => {
     const line = s.loc.start.line;
-    const traced = inFunction() && !sameLineAsIf.has(s);
+    const traced = inFunction();
     switch (s.type) {
       case 'FunctionDeclaration':
         visitFunction(s, s.id?.name ?? 'anonymous');
@@ -230,10 +282,8 @@ export function instrument(source: string): Instrumented {
         visitStmts(s.body, blockNames(s.body));
         return;
       case 'IfStatement': {
-        if (traced) wrapTest(s.test, line);
+        if (traced) wrapTest(s.test, line, testSpec(s.test, null));
         visitExpr(s.test);
-        const first = s.consequent.type === 'BlockStatement' ? s.consequent.body[0] : s.consequent;
-        if (first && first.loc.start.line === line) sameLineAsIf.add(first);
         ensureBlock(s.consequent);
         visitBody(s.consequent);
         if (s.alternate) {
@@ -246,15 +296,15 @@ export function instrument(source: string): Instrumented {
         return;
       }
       case 'WhileStatement':
-        if (traced) wrapTest(s.test, line);
+        if (traced) wrapTest(s.test, line, testSpec(s.test, s));
         visitExpr(s.test);
         ensureBlock(s.body);
-        visitBody(s.body);
+        withBreakable(s, true, () => visitBody(s.body));
         return;
       case 'DoWhileStatement':
         ensureBlock(s.body);
-        visitBody(s.body);
-        if (traced) wrapTest(s.test, s.test.loc.start.line);
+        withBreakable(s, true, () => visitBody(s.body));
+        if (traced) wrapTest(s.test, s.test.loc.start.line, testSpec(s.test, null));
         visitExpr(s.test);
         return;
       case 'ForStatement': {
@@ -263,13 +313,16 @@ export function instrument(source: string): Instrumented {
         if (s.init) visitExpr(s.init.type === 'VariableDeclaration' ? s.init : s.init);
         ensureBlock(s.body);
         if (traced) {
-          if (s.test) wrapTest(s.test, line);
+          if (s.test) wrapTest(s.test, line, testSpec(s.test, s));
           // 沒有條件的 for(;;)：在本體開頭記錄
-          else add(s.body.type === 'BlockStatement' ? s.body.start + 1 : s.body.start, `;${step(line)};`, 1, depth + 1);
+          else {
+            const [spec, tl] = testSpec(null, s);
+            add(s.body.type === 'BlockStatement' ? s.body.start + 1 : s.body.start, `;${step(line, spec, tl)};`, 1, depth + 1);
+          }
         }
         if (s.test) visitExpr(s.test);
         if (s.update) visitExpr(s.update);
-        visitBody(s.body);
+        withBreakable(s, true, () => visitBody(s.body));
         scopes.pop();
         return;
       }
@@ -280,8 +333,11 @@ export function instrument(source: string): Instrumented {
         visitExpr(s.right);
         ensureBlock(s.body);
         // 每一圈開始時記錄 header 這一行（迴圈變數已經是這一圈的值）
-        if (traced) add(s.body.type === 'BlockStatement' ? s.body.start + 1 : s.body.start, `;${step(line)};`, 1, depth + 1);
-        visitBody(s.body);
+        if (traced) {
+          const [spec, tl] = testSpec(null, s);
+          add(s.body.type === 'BlockStatement' ? s.body.start + 1 : s.body.start, `;${step(line, spec, tl)};`, 1, depth + 1);
+        }
+        withBreakable(s, true, () => visitBody(s.body));
         scopes.pop();
         return;
       }
@@ -289,10 +345,12 @@ export function instrument(source: string): Instrumented {
         if (traced) wrapTest(s.discriminant, line);
         visitExpr(s.discriminant);
         scopes.push({ names: new Set(blockNames(s.cases.flatMap((c: N) => c.consequent))), fn: false });
-        for (const c of s.cases) {
-          if (c.test) visitExpr(c.test);
-          for (const x of c.consequent) visitStmt(x);
-        }
+        withBreakable(s, false, () => {
+          for (const c of s.cases) {
+            if (c.test) visitExpr(c.test);
+            for (const x of c.consequent) visitStmt(x);
+          }
+        });
         scopes.pop();
         return;
       case 'TryStatement':
@@ -308,11 +366,16 @@ export function instrument(source: string): Instrumented {
         if (s.finalizer) visitStmt(s.finalizer);
         return;
       case 'LabeledStatement':
+        pendingLabel = s.label.name;
         visitStmt(s.body);
+        pendingLabel = undefined;
         return;
       case 'ReturnStatement':
         if (inFunction()) {
-          if (traced) add(s.start, `;${step(line)};`, 1, depth);
+          if (traced) {
+            const [spec, tl] = stmtSpec(s);
+            add(s.start, `;${step(line, spec, tl)};`, 1, depth);
+          }
           if (s.argument) {
             add(s.argument.start, `__rt.ret(${line},`, 1, depth);
             add(s.argument.end, ')', 0, depth);
@@ -324,7 +387,10 @@ export function instrument(source: string): Instrumented {
         return;
       default:
         // ExpressionStatement、VariableDeclaration、throw、break、continue…
-        if (traced) add(s.start, `;${step(line)};`, 1, depth);
+        if (traced) {
+          const [spec, tl] = stmtSpec(s);
+          add(s.start, `;${step(line, spec, tl)};`, 1, depth);
+        }
         visitExpr(s);
         return;
     }
@@ -378,7 +444,7 @@ export function instrument(source: string): Instrumented {
   }
   out += source.slice(last);
 
-  return { code: out, entries: findEntries(ast, comments) };
+  return { code: out, specs, entries: findEntries(ast, comments) };
 }
 
 /** 最外層的函式、指定成函式的變數、類別，以及前面 JSDoc 的參數型別 */
@@ -408,148 +474,20 @@ function findEntries(ast: N, comments: { end: number; value: string }[]): EntryD
   return out;
 }
 
-// ─────────────────────────────── 序列化 ───────────────────────────────
-
-const isNodeObject = (v: object) => {
-  const proto = Object.getPrototypeOf(v);
-  return proto !== null && proto !== Object.prototype && !Array.isArray(v) && !(v instanceof Map) && !(v instanceof Set) && !(v instanceof Error) && typeof v !== 'function';
-};
-
-class Registry {
-  private ids = new WeakMap<object, string>();
-  private next = 1;
-  sid(o: object): string {
-    let id = this.ids.get(o);
-    if (!id) {
-      id = `o${this.next++}`;
-      this.ids.set(o, id);
-    }
-    return id;
-  }
-}
-
-class Ctx {
-  heap: Record<string, Heap[string] | null> = {};
-  private queue: [string, object][] = [];
-  private registry: Registry;
-  constructor(registry: Registry) {
-    this.registry = registry;
-  }
-
-  ref(o: object): Value {
-    const id = this.registry.sid(o);
-    if (!(id in this.heap) && Object.keys(this.heap).length < MAX_NODES) {
-      this.heap[id] = null;
-      this.queue.push([id, o]);
-    }
-    return { type: 'ref', id, cls: o.constructor?.name || 'Object' };
-  }
-
-  drain(): Heap {
-    while (this.queue.length) {
-      const [id, o] = this.queue.shift()!;
-      const fields: Record<string, Value> = {};
-      for (const [k, v] of Object.entries(o)) {
-        if (typeof v === 'function' || typeof v === 'symbol') continue;
-        fields[k] = ser(v, this);
-      }
-      this.heap[id] = { cls: o.constructor?.name || 'Object', fields };
-    }
-    const out: Heap = {};
-    for (const [k, v] of Object.entries(this.heap)) if (v) out[k] = v;
-    return out;
-  }
-}
-
-function ser(v: unknown, ctx: Ctx | null, depth = 0, seen: Set<object> = new Set()): Value {
-  if (v === null) return { type: 'none' };
-  if (v === undefined) return { type: 'repr', value: 'undefined', cls: 'undefined' };
-  if (typeof v === 'boolean') return { type: 'bool', value: v };
-  if (typeof v === 'number') {
-    if (Number.isNaN(v)) return { type: 'float', value: 'nan' };
-    if (!Number.isFinite(v)) return { type: 'float', value: v > 0 ? 'inf' : '-inf' };
-    return Number.isInteger(v) ? { type: 'int', value: v } : { type: 'float', value: v };
-  }
-  if (typeof v === 'bigint') return { type: 'int', value: v.toString() };
-  if (typeof v === 'string') return { type: 'str', value: v.length <= MAX_STR ? v : `${v.slice(0, MAX_STR)}…` };
-  if (typeof v === 'function') return { type: 'repr', value: `ƒ ${v.name || 'anonymous'}`, cls: 'function' };
-  if (typeof v === 'symbol') return { type: 'repr', value: v.toString(), cls: 'symbol' };
-  const o = v as object;
-  if (ctx && isNodeObject(o)) return ctx.ref(o);
-  if (depth >= MAX_DEPTH) return { type: 'repr', value: '…' };
-  if (seen.has(o)) return { type: 'repr', value: '[circular]' };
-  const next = new Set(seen).add(o);
-  const items = (xs: unknown[]) => xs.slice(0, MAX_ITEMS).map((x) => ser(x, ctx, depth + 1, next));
-  const trunc = (n: number) => (n > MAX_ITEMS ? { truncated: n - MAX_ITEMS } : {});
-  if (Array.isArray(o)) return { type: 'list', items: items(o), ...trunc(o.length) };
-  if (o instanceof Set) {
-    const xs = [...o];
-    return { type: 'set', items: items(xs), ...trunc(xs.length) };
-  }
-  if (o instanceof Map) {
-    const es = [...o.entries()];
-    return {
-      type: 'dict',
-      cls: 'Map',
-      entries: es.slice(0, MAX_ITEMS).map(([k, x]) => [ser(k, ctx, depth + 1, next), ser(x, ctx, depth + 1, next)] as [Value, Value]),
-      ...trunc(es.length),
-    };
-  }
-  if (o instanceof Error) return { type: 'repr', value: `${o.name}: ${o.message}`, cls: o.name };
-  const es = Object.entries(o).filter(([, x]) => typeof x !== 'function');
-  return {
-    type: 'dict',
-    cls: 'Object',
-    entries: es.slice(0, MAX_ITEMS).map(([k, x]) => [{ type: 'str', value: k }, ser(x, ctx, depth + 1, next)] as [Value, Value]),
-    ...trunc(es.length),
-  };
-}
-
-/** 簡短顯示（呼叫堆疊上的參數、console.log、設計題的輸出） */
-export function short(v: unknown, limit = 16): string {
-  if (v === null) return 'null';
-  if (v === undefined) return 'undefined';
-  if (typeof v === 'string') {
-    const s = JSON.stringify(v);
-    return s.length <= limit ? s : `${s.slice(0, limit - 2)}…"`;
-  }
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : String(v);
-  if (typeof v === 'boolean' || typeof v === 'bigint') return String(v);
-  if (typeof v === 'function') return `ƒ ${v.name}`;
-  if (typeof v === 'object') {
-    if (isNodeObject(v)) {
-      const val = (v as { val?: unknown }).val;
-      return val !== undefined && typeof val !== 'object' ? `(${short(val)})` : (v.constructor?.name ?? 'Object');
-    }
-    const text = inspect(v, 2);
-    if (text.length <= limit) return text;
-    if (Array.isArray(v)) return `Array(${v.length})`;
-    if (v instanceof Map || v instanceof Set) return `${v.constructor.name}(${v.size})`;
-    return '{…}';
-  }
-  return String(v);
-}
-
-/** console.log 的顯示 */
-function inspect(v: unknown, depth = 3, seen: Set<object> = new Set()): string {
-  if (typeof v === 'string') return depth === 3 ? v : JSON.stringify(v);
-  if (v === null || v === undefined || typeof v !== 'object') return typeof v === 'function' ? `[Function: ${v.name}]` : String(v);
-  if (seen.has(v)) return '[Circular]';
-  if (depth <= 0) return Array.isArray(v) ? '[Array]' : '[Object]';
-  const next = new Set(seen).add(v);
-  const f = (x: unknown) => (typeof x === 'string' ? JSON.stringify(x) : inspect(x, depth - 1, next));
-  if (Array.isArray(v)) return `[${v.map(f).join(', ')}]`;
-  if (v instanceof Set) return `Set(${v.size}) {${[...v].map(f).join(', ')}}`;
-  if (v instanceof Map) return `Map(${v.size}) {${[...v].map(([k, x]) => `${f(k)} => ${f(x)}`).join(', ')}}`;
-  const name = isNodeObject(v) ? `${v.constructor?.name ?? ''} ` : '';
-  return `${name}{${Object.entries(v).map(([k, x]) => `${k}: ${f(x)}`).join(', ')}}`;
-}
-
 // ─────────────────────────────── 執行期 ───────────────────────────────
 
 type Getters = [string, () => unknown][];
 
+interface ActiveLoop {
+  spec: LoopSpec;
+  count: number;
+  total?: number;
+  done?: boolean;
+}
+
 interface Frame {
+  /** 由外而內正在進行的迴圈 */
+  loops: ActiveLoop[];
   func: string;
   line: number;
   args: [string, string][];
@@ -568,6 +506,8 @@ export class JsRuntime {
   stdout = '';
   private frames: Frame[] = [];
   private registry = new Registry();
+  /** 每個記錄點的說明卡片規格（由 instrument 產生） */
+  specs: StepSpec[] = [];
   /** 設計題：目前第幾個操作與已完成的輸出 */
   design: { index: number; outputs: string[] } | null = null;
   enabled = false;
@@ -579,7 +519,8 @@ export class JsRuntime {
     },
   };
 
-  private record(event: ExecutionStep['event'], extra: Partial<ExecutionStep> = {}) {
+  /** build：與變數共用同一個 heap 的額外欄位（說明卡片） */
+  private record(event: ExecutionStep['event'], extra: Partial<ExecutionStep> = {}, build?: (ctx: Ctx) => Partial<ExecutionStep>) {
     if (this.steps.length >= MAX_STEPS) throw new StopSignal();
     const ctx = new Ctx(this.registry);
     const frame = this.frames.at(-1)!;
@@ -634,6 +575,7 @@ export class JsRuntime {
     }
     if (this.design) step.design = { index: this.design.index, outputs: [...this.design.outputs] };
     if (extra.returnValue === undefined && 'returnValue' in extra) delete step.returnValue;
+    if (build) Object.assign(step, build(ctx));
     const heap = ctx.drain();
     if (Object.keys(heap).length) step.heap = heap;
     this.steps.push(step);
@@ -650,19 +592,80 @@ export class JsRuntime {
     if (step && Object.keys(extra).length) step.heap = { ...(step.heap ?? {}), ...extra };
   }
 
-  step(line: number, getters: Getters) {
+  step(line: number, getters: Getters, specIndex?: number, thunks?: (() => unknown)[]) {
     if (!this.enabled) return;
     const frame = this.frames.at(-1);
     if (!frame) return;
     frame.getters = getters;
     frame.line = line;
     this.lastLine = line;
-    this.record('line');
+    // 已經離開的迴圈（目前這一行不在迴圈範圍內）
+    frame.loops = frame.loops.filter((l) => line >= l.spec.start && line <= l.spec.end);
+    const spec = specIndex === undefined ? undefined : this.specs[specIndex];
+    // 子運算式的值：每個 thunk 只求值一次，失敗（null 的屬性、暫時性死區…）就當成無法得知
+    const cache = new Map<number, { ok: boolean; v: unknown }>();
+    const read: Read = (th) => {
+      let r = cache.get(th);
+      if (!r) {
+        try {
+          r = { ok: true, v: thunks![th]() };
+        } catch {
+          r = { ok: false, v: undefined };
+        }
+        cache.set(th, r);
+      }
+      return r;
+    };
+    if (spec?.loop) {
+      const active = frame.loops.find((l) => l.spec.line === spec.loop!.line);
+      if (active) active.count++;
+      else frame.loops.push({ spec: spec.loop, count: 1, total: loopTotal(spec.loop, read) });
+    }
+    this.record('line', {}, (ctx) => {
+      const out: Partial<ExecutionStep> = {};
+      if (spec) {
+        const cards = new CardBuilder(read, ctx, this.registry);
+        if (spec.cond) out.condition = cards.condition(spec.cond);
+        if (spec.calc) {
+          const calc = cards.calc(spec.calc);
+          if (calc) out.calc = calc;
+        }
+        if (spec.op) {
+          const op = cards.op(spec.op);
+          if (op) out.op = op;
+        }
+        if (spec.multi) {
+          const multi = cards.multi(spec.multi);
+          if (multi) out.multi = multi;
+        }
+        if (spec.slices) {
+          const slices = cards.slices(spec.slices);
+          if (slices.length) out.slices = slices;
+        }
+        if (spec.jump) out.jump = spec.jump;
+        // 迴圈條件為 false：最後一次檢查，迴圈即將結束
+        if (spec.loop && out.condition?.result === false) {
+          const active = frame.loops.find((l) => l.spec.line === spec.loop!.line);
+          if (active) active.done = true;
+        }
+      }
+      if (frame.loops.length) {
+        out.loops = frame.loops.map((l) => {
+          const info: NonNullable<ExecutionStep['loops']>[number] = { line: l.spec.line, kind: l.spec.kind, src: l.spec.src, iteration: l.count };
+          if (l.total !== undefined) info.total = l.total;
+          if (l.done || (l.total !== undefined && l.count > l.total)) info.done = true;
+          if (l.spec.seq) info.seq = l.spec.seq;
+          if (l.spec.item) info.item = l.spec.item;
+          return info;
+        });
+      }
+      return out;
+    });
   }
 
   enter(func: string, line: number, params: Getters, thisGetter?: () => unknown) {
     if (!this.enabled) {
-      this.frames.push({ func, line, args: [], getters: [], entered: true, returned: false, raised: false });
+      this.frames.push({ func, line, args: [], getters: [], loops: [], entered: true, returned: false, raised: false });
       return;
     }
     const args: [string, string][] = [];
@@ -673,7 +676,7 @@ export class JsRuntime {
         // 參數預設值中的 TDZ 之類：略過
       }
     }
-    this.frames.push({ func, line, args, getters: params, thisGetter, entered: false, returned: false, raised: false });
+    this.frames.push({ func, line, args, getters: params, thisGetter, loops: [], entered: false, returned: false, raised: false });
   }
 
   ret<T>(line: number, value: T): T {
@@ -900,6 +903,7 @@ export function traceJs(code: string, call: string): TraceResult {
 
   try {
     // 定義使用者的函式；回傳一個在同一個作用域中執行運算式的函式（才看得到 let / const / class）
+    rt.specs = inst.specs;
     const factory = new Function('__rt', 'console', `${PRELUDE}\n${inst.code}\n;return [(__src) => eval(__src), { ListNode, TreeNode, _Node, buildList, buildTree, buildGraph }];`);
     const [evaluate, prelude] = factory(rt, rt.console) as [(src: string) => unknown, Record<string, (...a: never[]) => unknown>];
     const parsed = parseCall(call);

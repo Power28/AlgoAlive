@@ -58,7 +58,8 @@ AlgoAlive 是專為 **LeetCode 刷題** 設計的互動式步驟動畫器，支�
 - 測試呼叫的寫法相同（`twoSum([2,7,11,15], 9)`、`nums = [2,7,11,15], target = 9`、一行一個值、設計題的兩個陣列）；參數的 JSDoc 型別是 `@param {ListNode}` / `@param {TreeNode}`（或名稱是 `head` / `root`）時，陣列自動轉成鏈結串列 / 二元樹
 - `class` 寫的設計類題目，`this.stack` 等狀態以變數顯示
 - 值用 JavaScript 的寫法顯示（`null`、`true`、`"字串"`）
-- 條件判斷、計算過程、容器操作等說明卡片目前只有 Python 版
+- 說明卡片：條件判斷（`&&` / `||` / `!` 的邏輯樹與短路、JavaScript 的真假值規則，例如空陣列也是 true）、計算過程（`Math.floor((lo + hi) / 2)` 逐步化簡、`+=` / `++`、位元運算）、容器操作（`push` / `pop` / `shift` / `unshift`、`Set` 的 `add` / `delete`、`Map` 的 `set` / `delete`、物件的 `obj[key] = value` / `delete`，`b.push(a.pop())` 也會說明）、解構交換 `[a, b] = [b, a]`、`slice` / `substring` 的範圍、`break` / `continue`、迴圈列的圈數；值都在執行前以唯讀方式算出，含有可能修改資料的呼叫（例如 `stack.pop()`）不預先求值
+- try / catch 流程與內建函式（`sort` / `reduce`…）的卡片目前只有 Python 版
 
 ## 演算法教學
 
@@ -106,7 +107,7 @@ npm test        # = test:tracer + test:e2e
 | 指令 | 內容 |
 |---|---|
 | `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
-| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
+| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
 | `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
 
 每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
@@ -138,8 +139,10 @@ src/
 │  └─ javascript/
 │     ├─ index.ts          # JavaScript 的 Language 實作
 │     ├─ tracer.ts         # Acorn 解析 + 插樁：每個敘述前記錄一步，輸出與 Python 相同的 TraceResult
+│     ├─ cards.ts          # 說明卡片：插樁時產生規格與子運算式的 thunk，執行時組成條件 / 計算 / 容器操作…
+│     ├─ serialize.ts      # JavaScript 值 → 帶型別標籤的 Value
 │     ├─ js.worker.ts      # Web Worker：執行插樁後的程式（第一次執行 JavaScript 才載入）
-│     ├─ format.ts         # null、true、"字串"、Set {…}
+│     ├─ format.ts         # null、true、"字串"、Set {…}；&& / || / ! 與 JavaScript 的真假值規則
 │     └─ functions.ts      # 找出 function / var f = function / 箭頭函式與 JSDoc 型別
 ├─ lib/
 │  ├─ value.ts             # 值的格式化（依語言的 ValueFormat）、型別判斷、2D 格子偵測
@@ -181,7 +184,7 @@ interface ExecutionStep {
 前端的視覺化只依賴上面這份與語言無關的追蹤格式。加入新語言時，在 `src/languages/<語言>/` 實作 [`Language`](src/languages/types.ts)：
 
 - **執行環境 `runtime()`**：在 Web Worker 中執行程式並逐步記錄，輸出相同的 `TraceResult`（每一步的行號、`Value`、heap、呼叫堆疊…）
-- **`format`**：字面值的寫法（例如 `null` / `true`）
+- **`format`**：字面值的寫法（例如 `null` / `true`）、邏輯運算子、真假值規則
 - **程式碼分析**：`analyzeIndexing`、`analyzeHeaps`、`findFunctions` / `exampleCall` / `callNeedsHelp`（測試呼叫的建議）
 - **`blank`、`callPlaceholder`、`callFormats`**：新頁籤的範本與測試呼叫的格式說明
 
