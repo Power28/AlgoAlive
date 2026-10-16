@@ -22,6 +22,15 @@ export interface Example {
   expected: string;
   /** 這題觀察重點 */
   note?: L;
+  /** 同一題的 JavaScript 版本（教學頁切換成 JavaScript 時使用） */
+  js?: { code: string; call: string; expected: string; note?: L };
+}
+
+/** 範例在指定語言下的版本；沒有該語言的版本時回傳原本的範例 */
+export function inLanguage(example: Example, language: LanguageId): Example {
+  if (language !== 'javascript' || !example.js || example.language === 'javascript') return example;
+  const { js, ...rest } = example;
+  return { ...rest, language: 'javascript', code: js.code, call: js.call, expected: js.expected, note: js.note ?? example.note };
 }
 
 export type CategoryId = 'arrays' | 'hashing' | 'linked-list' | 'tree' | 'stack-queue' | 'graph' | 'dp' | 'techniques';

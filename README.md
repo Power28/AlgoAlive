@@ -68,6 +68,8 @@ AlgoAlive 是專為 **LeetCode 刷題** 設計的互動式步驟動畫器，支�
 
 點右上角 **Learn / 演算法教學** 開啟。每個主題最上方都有**動畫示範**：在背景實際執行範例，左邊程式碼標出執行中的行、右邊是同樣的陣列 / 指針 / 樹 / 圖動畫，自動循環播放（可暫停、拖曳時間軸、切換該主題的其他範例；捲出畫面時自動暫停，系統開啟「減少動態效果」時不自動播放）。
 
+**58 題範例同時有 JavaScript 版本**（LeetCode 的 JavaScript 寫法，答案與 Python 版相同）：主題上方的「範例語言」可以切換 Python / JavaScript，動畫示範、範例清單與「在新頁籤開啟」都跟著換；選擇會記在瀏覽器裡。只有 Python 才有的主題（heapq 堆積、例外處理、Python 內建函式）不提供 JavaScript 版本。
+
 接著是「什麼時候用、核心觀念、程式模板、複雜度、常見陷阱」，並附 1～3 題可直接執行的 LeetCode 範例；從範例開啟的頁籤可以把左側切到「教學」，邊讀邊跑。
 
 | 分類 | 主題（範例題號） |
@@ -108,8 +110,8 @@ npm test        # = test:tracer + test:e2e
 | 指令 | 內容 |
 |---|---|
 | `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
-| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數、try / catch、內建函式）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例比對回傳值 |
-| `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
+| `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數、try / catch、內建函式）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例（含 Python 範例的 JavaScript 版本）比對回傳值。新增 JavaScript 範例時 expected 先寫 `__FILL__`，再執行 `node scripts/fill_js_expected.mjs` 填入實際的回傳值 |
+| `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例（有 JavaScript 版本的再切換語言開啟一次）、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
 
 每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
 

@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchBrowser } from './browser.mjs';
+import { loadJsExamples } from './js_examples.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREVIEW_PORT = 4179;
@@ -34,6 +35,8 @@ function loadExpected() {
     const src = fs.readFileSync(path.join(dir, file), 'utf8');
     for (const m of src.matchAll(EXAMPLE_RE)) expected.set(m[1], unescape(m[3]));
   }
+  // Python 範例的 JavaScript 版本（key 為 lc206@js）
+  for (const ex of loadJsExamples()) if (ex.key.endsWith('@js')) expected.set(ex.key, ex.expected);
   return expected;
 }
 
@@ -115,27 +118,49 @@ async function testExamples(page, expected) {
     await page.click('[data-action="library"]');
     await page.waitForSelector(`[data-topic="${topic}"]`);
     await page.click(`[data-topic="${topic}"]`);
-    const ids = await page.$$eval('[data-example]', (els) => els.map((e) => e.dataset.example));
+    const listed = await page.$$eval('[data-example]', (els) => els.map((e) => ({ id: e.dataset.example, lang: e.dataset.exampleLang })));
     await page.keyboard.press('Escape');
 
-    for (const id of ids) {
-      seen.add(id);
+    // 有 JavaScript 版本的主題：切換成 JavaScript 再把每個範例跑一次
+    const runs = [...listed];
+    await page.click('[data-action="library"]');
+    await page.waitForSelector(`[data-topic="${topic}"]`);
+    await page.click(`[data-topic="${topic}"]`);
+    if (await page.$('[data-tutorial-lang="javascript"]')) {
+      await page.click('[data-tutorial-lang="javascript"]');
+      await sleep(150);
+      const jsIds = await page.$$eval('[data-example][data-example-lang="javascript"]', (els) => els.map((e) => e.dataset.example));
+      runs.push(...jsIds.map((id) => ({ id, lang: 'javascript' })));
+      await page.click('[data-tutorial-lang="python"]');
+    }
+    await page.keyboard.press('Escape');
+
+    for (const { id, lang } of runs) {
+      seen.add(lang === 'javascript' && !id.startsWith('js') ? `${id}@js` : id);
       await page.click('[data-action="library"]');
       await page.waitForSelector(`[data-topic="${topic}"]`);
       await page.click(`[data-topic="${topic}"]`);
-      await page.waitForSelector(`[data-example="${id}"]`);
-      await page.click(`[data-example="${id}"]`);
+      if (await page.$(`[data-tutorial-lang="${lang}"]`)) await page.click(`[data-tutorial-lang="${lang}"]`);
+      await page.waitForSelector(`[data-example="${id}"][data-example-lang="${lang}"]`);
+      await page.click(`[data-example="${id}"][data-example-lang="${lang}"]`);
       await sleep(250);
       const { returned, error } = await runActiveTab(page);
-      const want = expected.get(id);
+      const key = lang === 'javascript' && !id.startsWith('js') ? `${id}@js` : id;
+      const want = expected.get(key);
       let problem = null;
       if (error) problem = error;
       else if (want === undefined) problem = 'no expected value in src/tutorials';
       else if (returned !== want) problem = `expected ${JSON.stringify(want)}, got ${JSON.stringify(returned)}`;
-      record(`${id} (${topic})`, problem);
+      record(`${key} (${topic})`, problem);
       // 關掉剛開的頁籤，避免頁籤列無限變長
       await page.click('[role="tab"][aria-selected="true"] button');
     }
+    // 教學語言的偏好會記在瀏覽器裡：切回 Python，避免影響後面的測試
+    await page.click('[data-action="library"]');
+    await page.waitForSelector(`[data-topic="${topic}"]`);
+    await page.click(`[data-topic="${topic}"]`);
+    if (await page.$('[data-tutorial-lang="python"]')) await page.click('[data-tutorial-lang="python"]');
+    await page.keyboard.press('Escape');
   }
   const missing = [...expected.keys()].filter((id) => !seen.has(id));
   record('every example is reachable from the library', missing.length ? `missing: ${missing.join(', ')}` : null);

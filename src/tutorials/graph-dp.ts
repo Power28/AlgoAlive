@@ -60,6 +60,42 @@ while queue:
 `,
         call: 'numIslands([["1", "1", "0", "0"], ["1", "0", "0", "1"], ["0", "0", "1", "1"]])',
         expected: '2',
+        js: {
+          code: `/**
+ * @param {character[][]} grid
+ * @return {number}
+ */
+var numIslands = function(grid) {
+    const rows = grid.length;
+    const cols = grid[0].length;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    let islands = 0;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (grid[r][c] === "1") {
+                islands++;
+                grid[r][c] = "0";
+                const queue = [[r, c]];
+                while (queue.length) {
+                    const [cr, cc] = queue.shift();
+                    for (const [dr, dc] of dirs) {
+                        const nr = cr + dr;
+                        const nc = cc + dc;
+                        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] === "1") {
+                            grid[nr][nc] = "0";
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return islands;
+};
+`,
+          call: 'numIslands([["1","1","0","0"],["1","0","0","1"],["0","0","1","1"]])',
+          expected: '2',
+        },
       },
     ],
   },
@@ -111,6 +147,42 @@ while queue:
 `,
         call: 'canFinish(4, [[1, 0], [2, 0], [3, 1], [3, 2]])',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {number} numCourses
+ * @param {number[][]} prerequisites
+ * @return {boolean}
+ */
+var canFinish = function(numCourses, prerequisites) {
+    const graph = Array.from({ length: numCourses }, () => []);
+    const indegree = new Array(numCourses).fill(0);
+    for (const [course, pre] of prerequisites) {
+        graph[pre].push(course);
+        indegree[course]++;
+    }
+    const queue = [];
+    for (let i = 0; i < numCourses; i++) {
+        if (indegree[i] === 0) {
+            queue.push(i);
+        }
+    }
+    let taken = 0;
+    while (queue.length) {
+        const node = queue.shift();
+        taken++;
+        for (const next of graph[node]) {
+            indegree[next]--;
+            if (indegree[next] === 0) {
+                queue.push(next);
+            }
+        }
+    }
+    return taken === numCourses;
+};
+`,
+          call: 'canFinish(4, [[1, 0], [2, 0], [3, 1], [3, 2]])',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -179,6 +251,40 @@ def union(a, b):
 `,
         call: 'findCircleNum([[1, 1, 0, 0], [1, 1, 0, 0], [0, 0, 1, 1], [0, 0, 1, 1]])',
         expected: '2',
+        js: {
+          code: `/**
+ * @param {number[][]} isConnected
+ * @return {number}
+ */
+var findCircleNum = function(isConnected) {
+    const n = isConnected.length;
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const find = (x) => {
+        while (parent[x] !== x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    };
+    let provinces = n;
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            if (isConnected[i][j] === 1) {
+                const rootI = find(i);
+                const rootJ = find(j);
+                if (rootI !== rootJ) {
+                    parent[rootI] = rootJ;
+                    provinces--;
+                }
+            }
+        }
+    }
+    return provinces;
+};
+`,
+          call: 'findCircleNum([[1, 1, 0, 0], [1, 1, 0, 0], [0, 0, 1, 1], [0, 0, 1, 1]])',
+          expected: '2',
+        },
       },
     ],
   },
@@ -228,6 +334,27 @@ return dp[n]`,
 `,
         call: 'climbStairs(6)',
         expected: '13',
+        js: {
+          code: `/**
+ * @param {number} n
+ * @return {number}
+ */
+var climbStairs = function(n) {
+    if (n <= 2) {
+        return n;
+    }
+    const dp = new Array(n + 1).fill(0);
+    dp[1] = 1;
+    dp[2] = 2;
+    for (let i = 3; i <= n; i++) {
+        dp[i] = dp[i - 1] + dp[i - 2];
+    }
+    return dp[n];
+};
+`,
+          call: 'climbStairs(6)',
+          expected: '13',
+        },
       },
       {
         id: 'lc198',
@@ -244,6 +371,23 @@ return dp[n]`,
 `,
         call: 'rob([2, 7, 9, 3, 1])',
         expected: '12',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number}
+ */
+var rob = function(nums) {
+    const dp = new Array(nums.length + 1).fill(0);
+    dp[1] = nums[0];
+    for (let i = 2; i <= nums.length; i++) {
+        dp[i] = Math.max(dp[i - 1], dp[i - 2] + nums[i - 1]);
+    }
+    return dp[nums.length];
+};
+`,
+          call: 'rob([2, 7, 9, 3, 1])',
+          expected: '12',
+        },
       },
       {
         id: 'lc322',
@@ -261,6 +405,28 @@ return dp[n]`,
 `,
         call: 'coinChange([1, 2, 5], 11)',
         expected: '3',
+        js: {
+          code: `/**
+ * @param {number[]} coins
+ * @param {number} amount
+ * @return {number}
+ */
+var coinChange = function(coins, amount) {
+    const dp = new Array(amount + 1).fill(Infinity);
+    dp[0] = 0;
+    for (let i = 1; i <= amount; i++) {
+        for (const coin of coins) {
+            if (coin <= i) {
+                dp[i] = Math.min(dp[i], dp[i - coin] + 1);
+            }
+        }
+    }
+    return dp[amount] === Infinity ? -1 : dp[amount];
+};
+`,
+          call: 'coinChange([1, 2, 5], 11)',
+          expected: '3',
+        },
       },
     ],
   },
@@ -307,6 +473,25 @@ return dp[m][n]`,
 `,
         call: 'uniquePaths(3, 4)',
         expected: '10',
+        js: {
+          code: `/**
+ * @param {number} m
+ * @param {number} n
+ * @return {number}
+ */
+var uniquePaths = function(m, n) {
+    const dp = Array.from({ length: m }, () => new Array(n).fill(1));
+    for (let i = 1; i < m; i++) {
+        for (let j = 1; j < n; j++) {
+            dp[i][j] = dp[i - 1][j] + dp[i][j - 1];
+        }
+    }
+    return dp[m - 1][n - 1];
+};
+`,
+          call: 'uniquePaths(3, 4)',
+          expected: '10',
+        },
       },
       {
         id: 'lc1143',
@@ -327,6 +512,31 @@ return dp[m][n]`,
 `,
         call: 'longestCommonSubsequence("abcde", "ace")',
         expected: '3',
+        js: {
+          code: `/**
+ * @param {string} text1
+ * @param {string} text2
+ * @return {number}
+ */
+var longestCommonSubsequence = function(text1, text2) {
+    const m = text1.length;
+    const n = text2.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (text1[i - 1] === text2[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+    return dp[m][n];
+};
+`,
+          call: 'longestCommonSubsequence("abcde", "ace")',
+          expected: '3',
+        },
       },
     ],
   },

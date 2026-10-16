@@ -53,6 +53,26 @@ return prev`,
 `,
         call: 'reverseList(build_list([1, 2, 3, 4, 5]))',
         expected: '5 → 4 → 3 → 2 → 1',
+        js: {
+          code: `/**
+ * @param {ListNode} head
+ * @return {ListNode}
+ */
+var reverseList = function(head) {
+    let prev = null;
+    let curr = head;
+    while (curr) {
+        const next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+};
+`,
+          call: 'head = [1,2,3,4,5]',
+          expected: '5 → 4 → 3 → 2 → 1',
+        },
       },
       {
         id: 'lc21',
@@ -78,6 +98,32 @@ return prev`,
 `,
         call: 'mergeTwoLists(build_list([1, 2, 4]), build_list([1, 3, 4]))',
         expected: '1 → 1 → 2 → 3 → 4 → 4',
+        js: {
+          code: `/**
+ * @param {ListNode} list1
+ * @param {ListNode} list2
+ * @return {ListNode}
+ */
+var mergeTwoLists = function(list1, list2) {
+    const dummy = new ListNode();
+    let tail = dummy;
+    while (list1 && list2) {
+        if (list1.val <= list2.val) {
+            tail.next = list1;
+            list1 = list1.next;
+        } else {
+            tail.next = list2;
+            list2 = list2.next;
+        }
+        tail = tail.next;
+    }
+    tail.next = list1 || list2;
+    return dummy.next;
+};
+`,
+          call: 'list1 = [1,2,4], list2 = [1,3,4]',
+          expected: '1 → 1 → 2 → 3 → 4 → 4',
+        },
       },
     ],
   },
@@ -124,6 +170,24 @@ while fast and fast.next:
 `,
         call: 'middleNode(build_list([1, 2, 3, 4, 5, 6]))',
         expected: '4 → 5 → 6',
+        js: {
+          code: `/**
+ * @param {ListNode} head
+ * @return {ListNode}
+ */
+var middleNode = function(head) {
+    let slow = head;
+    let fast = head;
+    while (fast && fast.next) {
+        slow = slow.next;
+        fast = fast.next.next;
+    }
+    return slow;
+};
+`,
+          call: 'head = [1,2,3,4,5,6]',
+          expected: '4 → 5 → 6',
+        },
       },
       {
         id: 'lc141',
@@ -145,6 +209,27 @@ while fast and fast.next:
 `,
         call: 'hasCycle(build_list([3, 2, 0, -4], pos=1))',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {ListNode} head
+ * @return {boolean}
+ */
+var hasCycle = function(head) {
+    let slow = head;
+    let fast = head;
+    while (fast && fast.next) {
+        slow = slow.next;
+        fast = fast.next.next;
+        if (slow === fast) {
+            return true;
+        }
+    }
+    return false;
+};
+`,
+          call: 'head = [3,2,0,-4], pos = 1',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -193,6 +278,23 @@ while fast and fast.next:
 `,
         call: 'maxDepth(build_tree([3, 9, 20, null, null, 15, 7]))',
         expected: '3',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @return {number}
+ */
+var maxDepth = function(root) {
+    if (!root) {
+        return 0;
+    }
+    const left = maxDepth(root.left);
+    const right = maxDepth(root.right);
+    return 1 + Math.max(left, right);
+};
+`,
+          call: 'root = [3,9,20,null,null,15,7]',
+          expected: '3',
+        },
       },
       {
         id: 'lc226',
@@ -210,6 +312,24 @@ while fast and fast.next:
 `,
         call: 'invertTree(build_tree([4, 2, 7, 1, 3, 6, 9]))',
         expected: '[4, 7, 2, 9, 6, 3, 1]',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @return {TreeNode}
+ */
+var invertTree = function(root) {
+    if (!root) {
+        return null;
+    }
+    [root.left, root.right] = [root.right, root.left];
+    invertTree(root.left);
+    invertTree(root.right);
+    return root;
+};
+`,
+          call: 'root = [4,2,7,1,3,6,9]',
+          expected: '[4, 7, 2, 9, 6, 3, 1]',
+        },
       },
       {
         id: 'lc112',
@@ -227,6 +347,26 @@ while fast and fast.next:
 `,
         call: 'hasPathSum(build_tree([5, 4, 8, 11, null, 13, 4, 7, 2, null, null, null, 1]), 22)',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @param {number} targetSum
+ * @return {boolean}
+ */
+var hasPathSum = function(root, targetSum) {
+    if (!root) {
+        return false;
+    }
+    const remaining = targetSum - root.val;
+    if (!root.left && !root.right) {
+        return remaining === 0;
+    }
+    return hasPathSum(root.left, remaining) || hasPathSum(root.right, remaining);
+};
+`,
+          call: 'root = [5,4,8,11,null,13,4,7,2,null,null,null,1], targetSum = 22',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -286,6 +426,38 @@ while queue:
 `,
         call: 'levelOrder(build_tree([3, 9, 20, null, null, 15, 7]))',
         expected: '[[3], [9, 20], [15, 7]]',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @return {number[][]}
+ */
+var levelOrder = function(root) {
+    if (!root) {
+        return [];
+    }
+    const result = [];
+    const queue = [root];
+    while (queue.length) {
+        const level = [];
+        const size = queue.length;
+        for (let i = 0; i < size; i++) {
+            const node = queue.shift();
+            level.push(node.val);
+            if (node.left) {
+                queue.push(node.left);
+            }
+            if (node.right) {
+                queue.push(node.right);
+            }
+        }
+        result.push(level);
+    }
+    return result;
+};
+`,
+          call: 'root = [3,9,20,null,null,15,7]',
+          expected: '[[3], [9, 20], [15, 7]]',
+        },
       },
     ],
   },
@@ -325,6 +497,23 @@ while queue:
 `,
         call: 'searchBST(build_tree([4, 2, 7, 1, 3, 6, 9]), 3)',
         expected: '[3]',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @param {number} val
+ * @return {TreeNode}
+ */
+var searchBST = function(root, val) {
+    let node = root;
+    while (node && node.val !== val) {
+        node = val < node.val ? node.left : node.right;
+    }
+    return node;
+};
+`,
+          call: 'root = [4,2,7,1,3,6,9], val = 3',
+          expected: '[3]',
+        },
       },
       {
         id: 'lc98',
@@ -344,6 +533,27 @@ while queue:
 `,
         call: 'isValidBST(build_tree([5, 3, 8, 1, 4, 7, 9]))',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {TreeNode} root
+ * @return {boolean}
+ */
+var isValidBST = function(root) {
+    const valid = (node, low, high) => {
+        if (!node) {
+            return true;
+        }
+        if (!(low < node.val && node.val < high)) {
+            return false;
+        }
+        return valid(node.left, low, node.val) && valid(node.right, node.val, high);
+    };
+    return valid(root, -Infinity, Infinity);
+};
+`,
+          call: 'root = [5,3,8,1,4,7,9]',
+          expected: 'true',
+        },
       },
     ],
   },

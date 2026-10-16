@@ -40,6 +40,24 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
 `,
         call: 'maxProfit([7, 1, 5, 3, 6, 4])',
         expected: '5',
+        js: {
+          code: `/**
+ * @param {number[]} prices
+ * @return {number}
+ */
+var maxProfit = function(prices) {
+    let minPrice = Infinity;
+    let best = 0;
+    for (const price of prices) {
+        minPrice = Math.min(minPrice, price);
+        best = Math.max(best, price - minPrice);
+    }
+    return best;
+};
+`,
+          call: 'maxProfit([7, 1, 5, 3, 6, 4])',
+          expected: '5',
+        },
       },
       {
         id: 'lc55',
@@ -57,6 +75,25 @@ export const TECHNIQUE_TUTORIALS: Tutorial[] = [
 `,
         call: 'canJump([2, 3, 1, 1, 4])',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {boolean}
+ */
+var canJump = function(nums) {
+    let farthest = 0;
+    for (let i = 0; i < nums.length; i++) {
+        if (i > farthest) {
+            return false;
+        }
+        farthest = Math.max(farthest, i + nums[i]);
+    }
+    return true;
+};
+`,
+          call: 'canJump([2, 3, 1, 1, 4])',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -113,6 +150,21 @@ def solve(n):
 `,
         call: 'fib(5)',
         expected: '5',
+        js: {
+          code: `/**
+ * @param {number} n
+ * @return {number}
+ */
+var fib = function(n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+};
+`,
+          call: 'fib(5)',
+          expected: '5',
+        },
       },
       {
         id: 'lc1137',
@@ -138,6 +190,29 @@ def solve(n):
 `,
         call: 'tribonacci(6)',
         expected: '13',
+        js: {
+          code: `/**
+ * @param {number} n
+ * @return {number}
+ */
+var tribonacci = function(n) {
+    const memo = new Map();
+    const t = (k) => {
+        if (k < 3) {
+            return k === 0 ? 0 : 1;
+        }
+        if (memo.has(k)) {
+            return memo.get(k);
+        }
+        memo.set(k, t(k - 1) + t(k - 2) + t(k - 3));
+        return memo.get(k);
+    };
+    return t(n);
+};
+`,
+          call: 'tribonacci(6)',
+          expected: '13',
+        },
       },
     ],
   },
@@ -193,6 +268,29 @@ def solve(n):
 `,
         call: 'subsets([1, 2, 3])',
         expected: '[[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[][]}
+ */
+var subsets = function(nums) {
+    const result = [];
+    const path = [];
+    const backtrack = (start) => {
+        result.push([...path]);
+        for (let i = start; i < nums.length; i++) {
+            path.push(nums[i]);
+            backtrack(i + 1);
+            path.pop();
+        }
+    };
+    backtrack(0);
+    return result;
+};
+`,
+          call: 'subsets([1, 2, 3])',
+          expected: '[[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]',
+        },
       },
       {
         id: 'lc46',
@@ -223,6 +321,38 @@ def solve(n):
 `,
         call: 'permute([1, 2, 3])',
         expected: '[[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[][]}
+ */
+var permute = function(nums) {
+    const result = [];
+    const path = [];
+    const used = new Array(nums.length).fill(false);
+    const backtrack = () => {
+        if (path.length === nums.length) {
+            result.push([...path]);
+            return;
+        }
+        for (let i = 0; i < nums.length; i++) {
+            if (used[i]) {
+                continue;
+            }
+            used[i] = true;
+            path.push(nums[i]);
+            backtrack();
+            path.pop();
+            used[i] = false;
+        }
+    };
+    backtrack();
+    return result;
+};
+`,
+          call: 'permute([1, 2, 3])',
+          expected: '[[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]',
+        },
       },
     ],
   },
@@ -267,6 +397,29 @@ def solve(n):
 `,
         call: 'merge([[1, 3], [8, 10], [2, 6], [15, 18]])',
         expected: '[[1, 6], [8, 10], [15, 18]]',
+        js: {
+          code: `/**
+ * @param {number[][]} intervals
+ * @return {number[][]}
+ */
+var merge = function(intervals) {
+    intervals.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const interval of intervals) {
+        const last = merged[merged.length - 1];
+        if (last && interval[0] <= last[1]) {
+            last[1] = Math.max(last[1], interval[1]);
+        } else {
+            merged.push([...interval]);
+        }
+    }
+    return merged;
+};
+`,
+          call: 'merge([[1, 3], [8, 10], [2, 6], [15, 18]])',
+          expected: '[[1, 6], [8, 10], [15, 18]]',
+          note: { en: 'JavaScript `sort()` compares strings by default, so pass `(a, b) => a[0] - b[0]` to sort by start.', zh: 'JavaScript 的 `sort()` 預設依字串比較，所以要傳入 `(a, b) => a[0] - b[0]` 依起點排序。' },
+        },
       },
     ],
   },
@@ -309,6 +462,22 @@ def solve(n):
 `,
         call: 'singleNumber([4, 1, 2, 1, 2])',
         expected: '4',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number}
+ */
+var singleNumber = function(nums) {
+    let result = 0;
+    for (const num of nums) {
+        result ^= num;
+    }
+    return result;
+};
+`,
+          call: 'singleNumber([4, 1, 2, 1, 2])',
+          expected: '4',
+        },
       },
       {
         id: 'lc191',
@@ -326,6 +495,23 @@ def solve(n):
 `,
         call: 'hammingWeight(11)',
         expected: '3',
+        js: {
+          code: `/**
+ * @param {number} n
+ * @return {number}
+ */
+var hammingWeight = function(n) {
+    let count = 0;
+    while (n !== 0) {
+        n &= n - 1;
+        count++;
+    }
+    return count;
+};
+`,
+          call: 'hammingWeight(11)',
+          expected: '3',
+        },
       },
       {
         id: 'lc371',
@@ -350,6 +536,25 @@ def solve(n):
 `,
         call: 'getSum(2, -5)',
         expected: '-3',
+        js: {
+          code: `/**
+ * @param {number} a
+ * @param {number} b
+ * @return {number}
+ */
+var getSum = function(a, b) {
+    while (b !== 0) {
+        const carry = (a & b) << 1;
+        a = a ^ b;
+        b = carry;
+    }
+    return a;
+};
+`,
+          call: 'getSum(2, -5)',
+          expected: '-3',
+          note: { en: 'JavaScript bitwise operators already work on 32-bit integers, so no mask is needed — watch the negative numbers in the bits view.', zh: 'JavaScript 的位元運算本來就是 32 位元整數，不需要遮罩——看位元表裡的負數。' },
+        },
       },
     ],
   },

@@ -15,11 +15,13 @@ import { lineHint } from './ConditionPanel';
 /** 範例的 trace 只算一次；同一個範例重複開啟時直接沿用 */
 const traceCache = new Map<string, Promise<TraceResult>>();
 function loadTrace(ex: Example): Promise<TraceResult> {
-  let p = traceCache.get(ex.id);
+  // 同一題的 Python 與 JavaScript 版本分開快取
+  const key = `${ex.id}:${ex.language ?? 'python'}`;
+  let p = traceCache.get(key);
   if (!p) {
     p = getLanguage(ex.language).runtime().run(ex.code, ex.call, { background: true });
-    p.catch(() => traceCache.delete(ex.id)); // 失敗的不快取，下次重試
-    traceCache.set(ex.id, p);
+    p.catch(() => traceCache.delete(key)); // 失敗的不快取，下次重試
+    traceCache.set(key, p);
   }
   return p;
 }

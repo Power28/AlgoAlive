@@ -2,6 +2,7 @@
 //
 //   node scripts/check_js.mjs   （或 npm run test:js）
 import { MAX_STEPS, traceJs } from '../src/languages/javascript/tracer.ts';
+import { fmt, loadJsExamples } from './js_examples.mjs';
 
 const results = [];
 function check(name, fn) {
@@ -318,76 +319,18 @@ check('built-in methods are explained item by item', () => {
 
 // ─────────────── JavaScript 教學範例：回傳值依前端 jsFormat 的規則格式化後，等於 expected ───────────────
 
-/** 與 src/lib/value.ts 的 formatValue（src/languages/javascript/format.ts）相同的格式化 */
-function fmt(v, heap = {}) {
-  const f = (x) => fmt(x, heap);
-  const cell = (x) => (x?.type === 'str' ? x.value : f(x));
-  switch (v.type) {
-    case 'none':
-      return 'null';
-    case 'bool':
-      return String(v.value);
-    case 'int':
-      return String(v.value);
-    case 'float':
-      return typeof v.value === 'string' ? ({ inf: 'Infinity', '-inf': '-Infinity', nan: 'NaN' })[v.value] : String(v.value);
-    case 'str':
-      return JSON.stringify(v.value);
-    case 'list':
-      return `[${v.items.map(f).join(', ')}]`;
-    case 'set':
-      return `Set {${v.items.map(f).join(', ')}}`;
-    case 'dict':
-      return `{${v.entries.map(([k, x]) => `${f(k)}: ${f(x)}`).join(', ')}}`;
-    case 'repr':
-      return v.value;
-    case 'ref': {
-      const obj = heap[v.id];
-      if (!obj) return `${v.cls}(…)`;
-      if ('next' in obj.fields) return chain(v, heap).join(' → ');
-      if ('left' in obj.fields || 'right' in obj.fields) {
-        const out = [];
-        const queue = [v.id];
-        while (queue.length) {
-          const id = queue.shift();
-          if (!id) {
-            out.push('null');
-            continue;
-          }
-          out.push(cell(heap[id].fields.val));
-          const kid = (k) => (heap[id].fields[k]?.type === 'ref' ? heap[id].fields[k].id : null);
-          queue.push(kid('left'), kid('right'));
-        }
-        while (out.at(-1) === 'null') out.pop();
-        return `[${out.join(', ')}]`;
-      }
-      return `${obj.cls}(…)`;
-    }
-  }
-  return '?';
-}
-
 console.log('\nJavaScript tutorial examples');
-const fs = await import('node:fs');
-const path = await import('node:path');
-const dir = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'src', 'tutorials');
-const EXAMPLE = /id: '(js\d+)'.*?code: `(.*?)`,\s*call: '((?:[^'\\]|\\.)*)',\s*expected: '((?:[^'\\]|\\.)*)',/gs;
-const unescape = (s) => s.replace(/\\(.)/g, '$1');
-let found = 0;
-for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
-  for (const m of fs.readFileSync(path.join(dir, file), 'utf8').matchAll(EXAMPLE)) {
-    found++;
-    const [, id, code, call, expected] = m;
-    check(`${id} (${file})`, () => {
-      const r = traceJs(code.replace(/\\`/g, '`').replace(/\\\$/g, '$'), unescape(call));
-      if (r.error) return r.error.message;
-      if (r.steps.length >= MAX_STEPS) return `${r.steps.length} steps — keep tutorial examples under ${MAX_STEPS}`;
-      const got = fmt(r.returnValue, r.returnHeap);
-      return got === unescape(expected) ? null : `expected ${unescape(expected)}, got ${got}`;
-    });
-  }
+const examples = loadJsExamples();
+for (const ex of examples) {
+  check(`${ex.key} (${ex.file})`, () => {
+    const r = traceJs(ex.code, ex.call);
+    if (r.error) return r.error.message;
+    if (r.steps.length >= MAX_STEPS) return `${r.steps.length} steps — keep tutorial examples under ${MAX_STEPS}`;
+    const got = fmt(r.returnValue, r.returnHeap);
+    return got === ex.expected ? null : `expected ${ex.expected}, got ${got}`;
+  });
 }
-check('JavaScript tutorial examples were found', () => (found ? null : 'no js examples in src/tutorials'));
+check('JavaScript tutorial examples were found', () => (examples.length ? null : 'no JavaScript examples in src/tutorials'));
 
 const failed = results.filter((ok) => !ok).length;
 console.log(`\n${failed ? 'FAILED' : 'PASSED'}: ${results.length - failed}/${results.length} checks`);

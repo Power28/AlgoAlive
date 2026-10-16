@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Lightbulb, ListChecks, Timer } from 'lucide-react';
 import { useL, useT, type L } from '../i18n';
-import type { Difficulty, Example, Tutorial } from '../tutorials';
+import { inLanguage, type Difficulty, type Example, type Tutorial } from '../tutorials';
+import { getLanguage } from '../languages';
+import { useTutorialLanguage } from '../hooks/useTutorialLanguage';
 import { TutorialDemo } from './TutorialDemo';
 
 /** 支援 **粗體** 與 `程式碼` 的簡易行內格式 */
@@ -98,9 +100,14 @@ interface Props {
   currentExampleId?: string;
 }
 
-export function TutorialView({ tutorial, onOpenExample, currentExampleId }: Props) {
+export function TutorialView({ tutorial: base, onOpenExample, currentExampleId }: Props) {
   const t = useT();
   const l = useL();
+  // 有 JavaScript 版本的主題可以切換語言：動畫示範、範例清單、在新頁籤開啟都跟著換
+  const [preferred, setPreferred] = useTutorialLanguage();
+  const hasJs = base.examples.some((e) => e.js);
+  const language = hasJs ? preferred : 'python';
+  const tutorial = useMemo(() => ({ ...base, examples: base.examples.map((e) => inLanguage(e, language)) }), [base, language]);
   return (
     <article>
       <h2 className="text-xl font-bold tracking-tight text-ink-100">{l(tutorial.title)}</h2>
@@ -108,8 +115,28 @@ export function TutorialView({ tutorial, onOpenExample, currentExampleId }: Prop
         <Rich text={l(tutorial.tagline)} />
       </p>
 
-      {/* 切換主題時重新掛載，回到該主題的第一個範例 */}
-      <TutorialDemo key={tutorial.id} tutorial={tutorial} onOpenExample={onOpenExample} />
+      {hasJs && (
+        <div className="mt-4 flex items-center gap-2 text-xs text-ink-400">
+          {t('tutorialLanguage')}
+          <div className="flex rounded-md border border-ink-600 p-0.5">
+            {(['python', 'javascript'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPreferred(id)}
+                className={`rounded px-2 py-0.5 transition ${language === id ? 'bg-ink-600 font-semibold text-ink-100' : 'hover:text-ink-200'}`}
+                data-tutorial-lang={id}
+                aria-pressed={language === id}
+              >
+                {getLanguage(id).label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 切換主題或語言時重新掛載，回到第一個範例 */}
+      <TutorialDemo key={`${tutorial.id}:${language}`} tutorial={tutorial} onOpenExample={onOpenExample} />
 
       <Section icon={<ListChecks size={14} />} title={t('whenToUse')}>
         <BulletList items={tutorial.whenToUse} />
@@ -163,6 +190,7 @@ export function TutorialView({ tutorial, onOpenExample, currentExampleId }: Prop
                   <button
                     onClick={() => onOpenExample(ex)}
                     data-example={ex.id}
+                    data-example-lang={ex.language ?? 'python'}
                     className="ml-auto flex items-center gap-1 rounded-md bg-ok/90 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-ok"
                   >
                     <ExternalLink size={12} />
