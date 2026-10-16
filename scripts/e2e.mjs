@@ -668,6 +668,7 @@ async function testStepLimit(page, url) {
         code: 'def search(nums, target):\n    lo, hi = 0, len(nums) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n',
         call: 'search(list(range(0, 3000, 3)), 2400)',
       },
+      { id: 'dict', title: 'dict', code: 'def f():\n    seen = {i: -i for i in range(300)}\n    nums = set(range(300))\n    x = 150\n    return seen[x]\n', call: 'f()' },
     ],
     activeId: 'long',
   };
@@ -721,6 +722,24 @@ async function testStepLimit(page, url) {
   record(
     'large arrays show the cells around the pointers with their real indexes',
     /len 1000/.test(big.header) && big.gaps >= 2 && big.labels.includes('499') && big.labels.includes('999') && big.pointers ? null : `got ${JSON.stringify({ ...big, labels: big.labels.slice(0, 30) })}`,
+  );
+
+  // 大的 dict / set（300 項）：只畫出開頭、結尾，以及 key 等於變數值的項目
+  await page.click('[role="tab"]:nth-child(4)');
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  await page.click('[data-action="last"]');
+  await sleep(400);
+  const coll = await page.evaluate(() => {
+    const find = (name) => [...document.querySelectorAll('main section')].find((el) => el.innerText.startsWith(name));
+    const info = (el) => ({ text: el?.innerText.replace(/\s+/g, ' ').slice(0, 400) ?? '', gaps: el?.querySelectorAll('[data-gap]').length ?? 0 });
+    return { dict: info(find('seen')), set: info(find('nums')) };
+  });
+  record(
+    'large dicts and sets show the head, the tail and the entries matching a variable',
+    /size 300/.test(coll.dict.text) && coll.dict.gaps >= 2 && /150 (= x )?-150/.test(coll.dict.text) && /size 300/.test(coll.set.text) && coll.set.gaps >= 2 && /\b150\b/.test(coll.set.text)
+      ? null
+      : `got ${JSON.stringify(coll)}`,
   );
 
   await page.evaluate((v) => (v ? localStorage.setItem('algoalive.tabs.v1', v) : localStorage.removeItem('algoalive.tabs.v1')), saved);

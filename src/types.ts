@@ -13,7 +13,15 @@ export type Value =
       index?: number[];
       length?: number;
     }
-  | { type: 'dict'; entries: [Value, Value][]; cls?: string; truncated?: number }
+  | {
+      type: 'dict';
+      entries: [Value, Value][];
+      cls?: string;
+      truncated?: number;
+      /** 大的 dict 只送出部分項目：每一項在 dict 中的位置（由小到大），以及完整的項目數 */
+      index?: number[];
+      length?: number;
+    }
   | { type: 'repr'; value: string; cls?: string }
   /** 自訂類別實例（ListNode、TreeNode…）的參照，內容在 step.heap[id] */
   | { type: 'ref'; id: string; cls: string };

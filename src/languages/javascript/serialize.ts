@@ -14,6 +14,18 @@ const SPARSE_TAIL = 5;
 const SPARSE_AROUND = 4;
 const SPARSE_MAX = 150;
 
+/** 大的 Map / Set / 物件要送出的位置：開頭、結尾，以及 key（元素）等於目前變數值的項目 */
+export function sparseEntries(keys: unknown[], focusValues: Set<unknown>): number[] {
+  const n = keys.length;
+  const keep = new Set<number>();
+  for (let i = 0; i < Math.min(SPARSE_HEAD, n); i++) keep.add(i);
+  for (let i = Math.max(0, n - SPARSE_TAIL); i < n; i++) keep.add(i);
+  if (focusValues.size) {
+    for (let i = 0; i < n && keep.size < SPARSE_MAX; i++) if (focusValues.has(keys[i])) keep.add(i);
+  }
+  return [...keep].sort((a, b) => a - b).slice(0, SPARSE_MAX);
+}
+
 /** 大陣列要送出的位置（由小到大，最多 SPARSE_MAX 格） */
 export function sparseIndexes(n: number, focus: Iterable<number>): number[] {
   const keep = new Set<number>();
@@ -49,6 +61,8 @@ export class Ctx {
   heap: Record<string, Heap[string] | null> = {};
   /** 這一步的整數變數：大陣列只送出這些位置（可能是指針）附近的格子 */
   focus = new Set<number>();
+  /** 這一步的變數值：大的 Map / Set / 物件只送出 key 等於這些值的項目，以及開頭、結尾 */
+  focusValues = new Set<unknown>();
   private queue: [string, object][] = [];
   private registry: Registry;
   constructor(registry: Registry) {
@@ -109,10 +123,24 @@ export function ser(v: unknown, ctx: Ctx | null, depth = 0, seen: Set<object> = 
   }
   if (o instanceof Set) {
     const xs = [...o];
+    if (xs.length > MAX_ITEMS && depth === 0 && ctx) {
+      const keep = sparseEntries(xs, ctx.focusValues);
+      return { type: 'set', items: keep.map((i) => ser(xs[i], ctx, depth + 1, next)), index: keep, length: xs.length };
+    }
     return { type: 'set', items: items(xs), ...trunc(xs.length) };
   }
   if (o instanceof Map) {
     const es = [...o.entries()];
+    if (es.length > MAX_ITEMS && depth === 0 && ctx) {
+      const keep = sparseEntries(es.map(([k]) => k), ctx.focusValues);
+      return {
+        type: 'dict',
+        cls: 'Map',
+        entries: keep.map((i) => [ser(es[i][0], ctx, depth + 1, next), ser(es[i][1], ctx, depth + 1, next)] as [Value, Value]),
+        index: keep,
+        length: es.length,
+      };
+    }
     return {
       type: 'dict',
       cls: 'Map',
@@ -122,6 +150,18 @@ export function ser(v: unknown, ctx: Ctx | null, depth = 0, seen: Set<object> = 
   }
   if (o instanceof Error) return { type: 'repr', value: `${o.name}: ${o.message}`, cls: o.name };
   const es = Object.entries(o).filter(([, x]) => typeof x !== 'function');
+  if (es.length > MAX_ITEMS && depth === 0 && ctx) {
+    // 物件的 key 都是字串：用變數值的字串比對
+    const keys = new Set([...ctx.focusValues].map(String));
+    const keep = sparseEntries(es.map(([k]) => k), keys);
+    return {
+      type: 'dict',
+      cls: 'Object',
+      entries: keep.map((i) => [{ type: 'str', value: es[i][0] }, ser(es[i][1], ctx, depth + 1, next)] as [Value, Value]),
+      index: keep,
+      length: es.length,
+    };
+  }
   return {
     type: 'dict',
     cls: 'Object',

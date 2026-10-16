@@ -164,6 +164,20 @@ check('large arrays send the cells around every pointer', () => {
   }
 });
 
+check('large maps, sets and objects send the entries matching a variable', () => {
+  const code = 'function twoSum(nums, target) {\n  const seen = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    const need = target - nums[i];\n    if (seen.has(need)) return [seen.get(need), i];\n    seen.set(nums[i], i);\n  }\n  return [];\n}';
+  const r = traceJs(code, 'twoSum(Array.from({ length: 400 }, (_, i) => i), 701)', 5000);
+  if (JSON.stringify(r.returnValue?.items?.map((x) => x.value)) !== '[350,351]') return `returned ${JSON.stringify(r.returnValue)}`;
+  const seen = r.steps.filter((s) => s.variables.seen).at(-1).variables.seen;
+  const keys = seen.entries.map(([k]) => k.value);
+  if (seen.length !== 351 || keys.length > 150 || !keys.includes(350) || seen.cls !== 'Map') return `seen should be sent sparsely: ${seen.length} / ${keys}`;
+  if (!fmt(seen).startsWith('{0: 0, 1: 1,') || !fmt(seen).includes('…')) return `sparse Map text ${fmt(seen).slice(0, 80)}`;
+  const big = traceJs('function f() {\n  const s = new Set(Array.from({ length: 300 }, (_, i) => i));\n  const o = {};\n  for (let i = 0; i < 200; i++) o[i] = i;\n  const x = 150;\n  return s.size;\n}', 'f()', 5000);
+  const last = big.steps.at(-1).variables;
+  if (last.s?.length !== 300 || !last.s.index.includes(150)) return `set ${last.s?.length} / ${last.s?.index}`;
+  if (last.o?.length !== 200 || !last.o.entries.some(([k]) => k.value === '150')) return `object ${last.o?.length}`;
+});
+
 check('syntax and runtime errors report the line', () => {
   const syntax = traceJs('function f() {\n  return 1 +;\n}', 'f()');
   if (syntax.error?.type !== 'SyntaxError' || syntax.error.line !== 2) return `syntax ${JSON.stringify(syntax.error)}`;

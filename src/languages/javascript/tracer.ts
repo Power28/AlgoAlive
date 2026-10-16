@@ -633,7 +633,10 @@ export class JsRuntime {
       return out;
     };
     const current = read(frame.getters, frame.thisGetter);
-    for (const [, v] of current) if (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 1e7) ctx.focus.add(v as number);
+    for (const [, v] of current) {
+      if (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 1e7) ctx.focus.add(v as number);
+      if (typeof v === 'number' || (typeof v === 'string' && v.length <= 100)) ctx.focusValues.add(v);
+    }
     for (const [name, v] of current) variables[name] = ser(v, ctx);
     // 外層呼叫中指向節點的變數：遞迴時整棵樹仍畫得出來，並標出遞迴路徑
     const stackRefs: { depth: number; name: string; id: string }[] = [];
