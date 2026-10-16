@@ -87,6 +87,27 @@ function blockNames(stmts: N[]): string[] {
   return out;
 }
 
+/** 函式本體中出現的識別字（屬性名稱不算） */
+function identifiers(body: N): Set<string> {
+  const out = new Set<string>();
+  const visit = (n: N, parent: N, key: string) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'Identifier') {
+      const isProp = parent && ((parent.type === 'MemberExpression' && key === 'property' && !parent.computed) || (parent.type === 'Property' && key === 'key' && !parent.computed));
+      if (!isProp) out.add(n.name);
+      return;
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'loc') continue;
+      const v = n[k];
+      if (Array.isArray(v)) v.forEach((x) => visit(x, n, k));
+      else if (v && typeof v.type === 'string') visit(v, n, k);
+    }
+  };
+  visit(body, null, '');
+  return out;
+}
+
 function usesThis(body: N): boolean {
   let found = false;
   const visit = (n: N) => {
@@ -144,13 +165,17 @@ export function instrument(source: string): Instrumented {
   const scopes: Scope[] = [];
   let depth = 0;
   // 目前所在函式的資訊（用 this 時多一個 getter）
-  const fnStack: { thisGetter: boolean }[] = [];
+  /** 目前所在函式：用 this 時多一個 getter；used 是函式本體中出現的識別字（判斷用到哪些外層變數） */
+  const fnStack: { thisGetter: boolean; used: Set<string> }[] = [];
 
   const visibleGetters = (): string => {
     // 從所在函式往內：參數、外層區塊的變數在前，與宣告順序一致
     let start = scopes.length - 1;
     while (start > 0 && !scopes[start].fn) start--;
     const names: string[] = [];
+    // 巢狀函式用到的外層函式變數（閉包，例如 quickSort 裡的 nums）：與 Python 相同一併顯示；最外層（全域）不算
+    const used = fnStack.at(-1)?.used;
+    if (used) for (let i = 1; i < start; i++) for (const n of scopes[i].names) if (used.has(n) && !names.includes(n)) names.push(n);
     for (let i = start; i < scopes.length; i++) for (const n of scopes[i].names) if (!names.includes(n)) names.push(n);
     const parts = names.map((n) => `[${JSON.stringify(n)},()=>${n}]`);
     if (fnStack.at(-1)?.thisGetter) parts.push(`["this",()=>this]`);
@@ -244,7 +269,7 @@ export function instrument(source: string): Instrumented {
     return 'anonymous';
   };
 
-  const visitFunction = (fn: N, name: string) => {
+  const visitFunction = (fn: N, name: string, ctor = false) => {
     if (fn.body.type !== 'BlockStatement') {
       // 運算式本體的箭頭函式（x => x * 2）：不產生步驟，但裡面的函式照樣處理
       visitExpr(fn.body);
@@ -256,13 +281,13 @@ export function instrument(source: string): Instrumented {
     for (const n of blockNames(fn.body.body)) fnScope.names.add(n);
     const thisGetter = fn.type !== 'ArrowFunctionExpression' && usesThis(fn.body);
     scopes.push(fnScope);
-    fnStack.push({ thisGetter });
+    fnStack.push({ thisGetter, used: identifiers(fn.body) });
     // 例外不會跨越函式邊界被同一個 try 接住：巢狀函式從空的 try 堆疊開始
     const outerTries = tryStack;
     tryStack = [];
     depth++;
     const args = `[${params.map((p: string) => `[${JSON.stringify(p)},()=>${p}]`).join(',')}]`;
-    add(fn.body.start + 1, `__rt.enter(${JSON.stringify(name)},${fn.loc.start.line},${args}${thisGetter ? ',()=>this' : ''});try{`, 1, depth);
+    add(fn.body.start + 1, `__rt.enter(${JSON.stringify(name)},${fn.loc.start.line},${args},${thisGetter ? '()=>this' : 'undefined'}${ctor ? ',1' : ''});try{`, 1, depth);
     add(fn.body.end - 1, `}catch(__e){__rt.exc(__e);throw __e}finally{__rt.leave()}`, 0, depth);
     for (const s of fn.body.body) visitStmt(s);
     depth--;
@@ -450,7 +475,7 @@ export function instrument(source: string): Instrumented {
     for (const m of cls.body.body) {
       if (m.type === 'MethodDefinition') {
         const name = m.kind === 'constructor' ? (cls.id?.name ?? 'constructor') : m.key.type === 'Identifier' ? m.key.name : 'method';
-        visitFunction(m.value, name);
+        visitFunction(m.value, name, m.kind === 'constructor');
       } else if (m.type === 'PropertyDefinition' && m.value) visitExpr(m.value, m);
     }
   };
@@ -539,6 +564,8 @@ interface Frame {
   entered: boolean;
   returned: boolean;
   raised: boolean;
+  /** 不記錄步驟的建構子（演算法中途 new 出來的物件） */
+  silent?: boolean;
   /** 這個 frame 已經記錄過的例外（同一個例外一路經過 finally、catch 只記一次） */
   excRecorded?: unknown;
   /** 目前處理中的例外：經過哪些 try、被哪個 catch 接住 */
@@ -559,6 +586,11 @@ export class JsRuntime {
   /** 設計題：目前第幾個操作與已完成的輸出 */
   design: { index: number; outputs: string[] } | null = null;
   enabled = false;
+  /** 演算法中途 new 出來的物件：建構子不記錄步驟（與 Python 不追蹤 TrieNode() 的 __init__ 相同） */
+  private muted = 0;
+  private get active() {
+    return this.enabled && this.muted === 0;
+  }
   lastLine: number | null = null;
 
   console = {
@@ -641,7 +673,7 @@ export class JsRuntime {
   }
 
   step(line: number, getters: Getters, specIndex?: number, thunks?: (() => unknown)[]) {
-    if (!this.enabled) return;
+    if (!this.active) return;
     const frame = this.frames.at(-1);
     if (!frame) return;
     frame.getters = getters;
@@ -724,9 +756,12 @@ export class JsRuntime {
     });
   }
 
-  enter(func: string, line: number, params: Getters, thisGetter?: () => unknown) {
-    if (!this.enabled) {
-      this.frames.push({ func, line, args: [], getters: [], loops: [], entered: true, returned: false, raised: false });
+  enter(func: string, line: number, params: Getters, thisGetter?: () => unknown, ctor?: number) {
+    // 建構子在使用者的函式裡被呼叫（例如 insert 裡的 new TrieNode()）：這一層與它呼叫的函式都不記錄
+    const silent = !!ctor && this.frames.length > 0;
+    if (silent) this.muted++;
+    if (!this.active) {
+      this.frames.push({ func, line, args: [], getters: [], loops: [], entered: true, returned: false, raised: false, silent });
       return;
     }
     const args: [string, string][] = [];
@@ -742,7 +777,7 @@ export class JsRuntime {
 
   ret<T>(line: number, value: T): T {
     const frame = this.frames.at(-1);
-    if (this.enabled && frame) {
+    if (this.active && frame) {
       frame.line = line;
       frame.returned = true;
       this.recordReturn(value);
@@ -767,7 +802,7 @@ export class JsRuntime {
     frame.raised = catcher === null;
     if (frame.excRecorded === e) return;
     frame.excRecorded = e;
-    if (!this.enabled) return;
+    if (!this.active) return;
     const flow: ExcFlow = {
       type: e instanceof Error ? e.name : 'Uncaught',
       message: e instanceof Error ? e.message : short(e, 40),
@@ -853,7 +888,12 @@ export class JsRuntime {
 
   leave() {
     const frame = this.frames.at(-1);
-    if (frame && this.enabled && !frame.returned && !frame.raised) {
+    if (frame?.silent) {
+      this.frames.pop();
+      this.muted--;
+      return;
+    }
+    if (frame && this.active && !frame.returned && !frame.raised) {
       // 沒有 return 就結束：回傳 undefined
       frame.returned = true;
       try {

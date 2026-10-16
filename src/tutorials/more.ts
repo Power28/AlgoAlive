@@ -62,6 +62,43 @@ def insert(word):
 `,
         call: 'longestCommonPrefix(["flower", "flow", "flight"])',
         expected: '\'fl\'',
+        js: {
+          code: `class TrieNode {
+    constructor() {
+        this.children = new Map();
+        this.isEnd = false;
+    }
+}
+
+/**
+ * @param {string[]} strs
+ * @return {string}
+ */
+var longestCommonPrefix = function(strs) {
+    const root = new TrieNode();
+    for (const word of strs) {
+        let node = root;
+        for (const ch of word) {
+            if (!node.children.has(ch)) {
+                node.children.set(ch, new TrieNode());
+            }
+            node = node.children.get(ch);
+        }
+        node.isEnd = true;
+    }
+    let prefix = "";
+    let node = root;
+    while (node.children.size === 1 && !node.isEnd) {
+        const [ch, child] = [...node.children][0];
+        prefix += ch;
+        node = child;
+    }
+    return prefix;
+};
+`,
+          call: 'longestCommonPrefix(["flower", "flow", "flight"])',
+          expected: '"fl"',
+        },
       },
       {
         id: 'lc720',
@@ -92,6 +129,49 @@ def insert(word):
 `,
         call: 'longestWord(["w", "wo", "wor", "worl", "world", "a", "ap"])',
         expected: '\'world\'',
+        js: {
+          code: `class TrieNode {
+    constructor() {
+        this.children = new Map();
+        this.isEnd = false;
+    }
+}
+
+/**
+ * @param {string[]} words
+ * @return {string}
+ */
+var longestWord = function(words) {
+    const root = new TrieNode();
+    for (const word of words) {
+        let node = root;
+        for (const ch of word) {
+            if (!node.children.has(ch)) {
+                node.children.set(ch, new TrieNode());
+            }
+            node = node.children.get(ch);
+        }
+        node.isEnd = true;
+    }
+    let best = "";
+    const stack = [[root, ""]];
+    while (stack.length) {
+        const [node, word] = stack.pop();
+        if (word.length > best.length || (word.length === best.length && word < best)) {
+            best = word;
+        }
+        for (const [ch, child] of node.children) {
+            if (child.isEnd) {
+                stack.push([child, word + ch]);
+            }
+        }
+    }
+    return best;
+};
+`,
+          call: 'longestWord(["w", "wo", "wor", "worl", "world", "a", "ap"])',
+          expected: '"world"',
+        },
       },
     ],
   },
@@ -138,6 +218,27 @@ def insert(word):
 `,
         call: 'rotate([[1, 2, 3], [4, 5, 6], [7, 8, 9]])',
         expected: '[[7, 4, 1], [8, 5, 2], [9, 6, 3]]',
+        js: {
+          code: `/**
+ * @param {number[][]} matrix
+ * @return {number[][]}
+ */
+var rotate = function(matrix) {
+    const n = matrix.length;
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            [matrix[i][j], matrix[j][i]] = [matrix[j][i], matrix[i][j]];
+        }
+    }
+    for (const row of matrix) {
+        row.reverse();
+    }
+    return matrix;
+};
+`,
+          call: 'rotate([[1, 2, 3], [4, 5, 6], [7, 8, 9]])',
+          expected: '[[7, 4, 1], [8, 5, 2], [9, 6, 3]]',
+        },
       },
       {
         id: 'lc74',
@@ -164,6 +265,35 @@ def insert(word):
 `,
         call: 'searchMatrix([[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 16)',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {number[][]} matrix
+ * @param {number} target
+ * @return {boolean}
+ */
+var searchMatrix = function(matrix, target) {
+    const m = matrix.length;
+    const n = matrix[0].length;
+    let lo = 0;
+    let hi = m * n - 1;
+    while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const r = Math.floor(mid / n);
+        const c = mid % n;
+        if (matrix[r][c] === target) {
+            return true;
+        } else if (matrix[r][c] < target) {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return false;
+};
+`,
+          call: 'searchMatrix([[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 16)',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -413,6 +543,39 @@ for i, x in enumerate(nums):
 `,
         call: '["MinStack", "push", "push", "push", "getMin", "pop", "top", "getMin"], [[], [-2], [0], [-3], [], [], [], []]',
         expected: '[None, None, None, None, -3, None, 0, -2]',
+        js: {
+          code: `class MinStack {
+    constructor() {
+        this.stack = [];
+        this.mins = [];
+    }
+
+    push(val) {
+        this.stack.push(val);
+        if (this.mins.length === 0 || val <= this.mins[this.mins.length - 1]) {
+            this.mins.push(val);
+        }
+    }
+
+    pop() {
+        const val = this.stack.pop();
+        if (val === this.mins[this.mins.length - 1]) {
+            this.mins.pop();
+        }
+    }
+
+    top() {
+        return this.stack[this.stack.length - 1];
+    }
+
+    getMin() {
+        return this.mins[this.mins.length - 1];
+    }
+}
+`,
+          call: '["MinStack","push","push","push","getMin","pop","top","getMin"], [[],[-2],[0],[-3],[],[],[],[]]',
+          expected: '[null, null, null, null, -3, null, 0, -2]',
+        },
       },
       {
         id: 'lc232',
@@ -446,6 +609,39 @@ for i, x in enumerate(nums):
 `,
         call: '["MyQueue", "push", "push", "push", "peek", "pop", "push", "pop", "empty"], [[], [1], [2], [3], [], [], [4], [], []]',
         expected: '[None, None, None, None, 1, 1, None, 2, False]',
+        js: {
+          code: `class MyQueue {
+    constructor() {
+        this.inbox = [];
+        this.outbox = [];
+    }
+
+    push(x) {
+        this.inbox.push(x);
+    }
+
+    pop() {
+        this.peek();
+        return this.outbox.pop();
+    }
+
+    peek() {
+        if (this.outbox.length === 0) {
+            while (this.inbox.length) {
+                this.outbox.push(this.inbox.pop());
+            }
+        }
+        return this.outbox[this.outbox.length - 1];
+    }
+
+    empty() {
+        return this.inbox.length === 0 && this.outbox.length === 0;
+    }
+}
+`,
+          call: '["MyQueue","push","push","push","peek","pop","push","pop","empty"], [[],[1],[2],[3],[],[],[4],[],[]]',
+          expected: '[null, null, null, null, 1, 1, null, 2, false]',
+        },
       },
       {
         id: 'lc146',
@@ -476,6 +672,39 @@ for i, x in enumerate(nums):
 `,
         call: '["LRUCache", "put", "put", "get", "put", "get", "put", "get", "get", "get"], [[2], [1, 1], [2, 2], [1], [3, 3], [2], [4, 4], [1], [3], [4]]',
         expected: '[None, None, None, 1, None, -1, None, -1, 3, 4]',
+        js: {
+          code: `class LRUCache {
+    constructor(capacity) {
+        this.capacity = capacity;
+        this.cache = new Map();
+    }
+
+    get(key) {
+        if (!this.cache.has(key)) {
+            return -1;
+        }
+        const value = this.cache.get(key);
+        this.cache.delete(key);
+        this.cache.set(key, value);
+        return value;
+    }
+
+    put(key, value) {
+        if (this.cache.has(key)) {
+            this.cache.delete(key);
+        }
+        this.cache.set(key, value);
+        if (this.cache.size > this.capacity) {
+            const oldest = this.cache.keys().next().value;
+            this.cache.delete(oldest);
+        }
+    }
+}
+`,
+          call: '["LRUCache","put","put","get","put","get","put","get","get","get"], [[2],[1,1],[2,2],[1],[3,3],[2],[4,4],[1],[3],[4]]',
+          expected: '[null, null, null, 1, null, -1, null, -1, 3, 4]',
+          note: { en: 'A `Map` keeps insertion order: delete and re-insert a key to mark it as most recently used; the first key is the stalest.', zh: '`Map` 會保留插入順序：刪掉再放回去就代表「最近使用」，第一個 key 就是最久沒用的。' },
+        },
       },
     ],
   },

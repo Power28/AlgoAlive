@@ -47,6 +47,27 @@ for i, x in enumerate(nums):
 `,
         call: 'twoSum([3, 8, 11, 2, 15, 7], 9)',
         expected: '[3, 5]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @param {number} target
+ * @return {number[]}
+ */
+var twoSum = function(nums, target) {
+    const seen = new Map();
+    for (let i = 0; i < nums.length; i++) {
+        const complement = target - nums[i];
+        if (seen.has(complement)) {
+            return [seen.get(complement), i];
+        }
+        seen.set(nums[i], i);
+    }
+    return [];
+};
+`,
+          call: 'twoSum([3, 8, 11, 2, 15, 7], 9)',
+          expected: '[3, 5]',
+        },
       },
       {
         id: 'lc242',
@@ -68,6 +89,32 @@ for i, x in enumerate(nums):
 `,
         call: 'isAnagram("anagram", "nagaram")',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {string} s
+ * @param {string} t
+ * @return {boolean}
+ */
+var isAnagram = function(s, t) {
+    if (s.length !== t.length) {
+        return false;
+    }
+    const count = {};
+    for (const ch of s) {
+        count[ch] = (count[ch] || 0) + 1;
+    }
+    for (const ch of t) {
+        if (!count[ch]) {
+            return false;
+        }
+        count[ch]--;
+    }
+    return true;
+};
+`,
+          call: 'isAnagram("anagram", "nagaram")',
+          expected: 'true',
+        },
       },
     ],
   },
@@ -124,6 +171,30 @@ return not stack`,
 `,
         call: 'isValid("([{}])[]")',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {string} s
+ * @return {boolean}
+ */
+var isValid = function(s) {
+    const pairs = { ")": "(", "]": "[", "}": "{" };
+    const stack = [];
+    for (const ch of s) {
+        if (ch in pairs) {
+            if (stack.length === 0 || stack[stack.length - 1] !== pairs[ch]) {
+                return false;
+            }
+            stack.pop();
+        } else {
+            stack.push(ch);
+        }
+    }
+    return stack.length === 0;
+};
+`,
+          call: 'isValid("([{}])[]")',
+          expected: 'true',
+        },
       },
       {
         id: 'lc150',
@@ -151,6 +222,36 @@ return not stack`,
 `,
         call: 'evalRPN(["4", "13", "5", "/", "+"])',
         expected: '6',
+        js: {
+          code: `/**
+ * @param {string[]} tokens
+ * @return {number}
+ */
+var evalRPN = function(tokens) {
+    const stack = [];
+    for (const token of tokens) {
+        if (["+", "-", "*", "/"].includes(token)) {
+            const b = stack.pop();
+            const a = stack.pop();
+            if (token === "+") {
+                stack.push(a + b);
+            } else if (token === "-") {
+                stack.push(a - b);
+            } else if (token === "*") {
+                stack.push(a * b);
+            } else {
+                stack.push(Math.trunc(a / b));
+            }
+        } else {
+            stack.push(Number(token));
+        }
+    }
+    return stack[0];
+};
+`,
+          call: 'evalRPN(["4", "13", "5", "/", "+"])',
+          expected: '6',
+        },
       },
     ],
   },
@@ -208,6 +309,32 @@ while queue:
 `,
         call: 'countStudents([1, 1, 0, 0], [0, 1, 0, 1])',
         expected: '0',
+        js: {
+          code: `/**
+ * @param {number[]} students
+ * @param {number[]} sandwiches
+ * @return {number}
+ */
+var countStudents = function(students, sandwiches) {
+    const queue = [...students];
+    let top = 0;
+    let misses = 0;
+    while (queue.length && misses < queue.length) {
+        const student = queue.shift();
+        if (student === sandwiches[top]) {
+            top++;
+            misses = 0;
+        } else {
+            queue.push(student);
+            misses++;
+        }
+    }
+    return queue.length;
+};
+`,
+          call: 'countStudents([1, 1, 0, 0], [0, 1, 0, 1])',
+          expected: '0',
+        },
       },
       {
         id: 'lc239',
@@ -233,6 +360,34 @@ while queue:
 `,
         call: 'maxSlidingWindow([1, 3, 1, 2, 0, 5], 3)',
         expected: '[3, 3, 2, 5]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @param {number} k
+ * @return {number[]}
+ */
+var maxSlidingWindow = function(nums, k) {
+    const dq = [];
+    const result = [];
+    for (let i = 0; i < nums.length; i++) {
+        const x = nums[i];
+        while (dq.length && nums[dq[dq.length - 1]] < x) {
+            dq.pop();
+        }
+        dq.push(i);
+        if (dq[0] <= i - k) {
+            dq.shift();
+        }
+        if (i >= k - 1) {
+            result.push(nums[dq[0]]);
+        }
+    }
+    return result;
+};
+`,
+          call: 'maxSlidingWindow([1, 3, 1, 2, 0, 5], 3)',
+          expected: '[3, 3, 2, 5]',
+        },
       },
     ],
   },
@@ -285,6 +440,28 @@ for i, x in enumerate(nums):
 `,
         call: 'dailyTemperatures([73, 74, 75, 71, 69, 72, 76, 73])',
         expected: '[1, 1, 4, 2, 1, 1, 0, 0]',
+        js: {
+          code: `/**
+ * @param {number[]} temperatures
+ * @return {number[]}
+ */
+var dailyTemperatures = function(temperatures) {
+    const answer = new Array(temperatures.length).fill(0);
+    const stack = [];
+    for (let i = 0; i < temperatures.length; i++) {
+        const t = temperatures[i];
+        while (stack.length && temperatures[stack[stack.length - 1]] < t) {
+            const j = stack.pop();
+            answer[j] = i - j;
+        }
+        stack.push(i);
+    }
+    return answer;
+};
+`,
+          call: 'dailyTemperatures([73, 74, 75, 71, 69, 72, 76, 73])',
+          expected: '[1, 1, 4, 2, 1, 1, 0, 0]',
+        },
       },
       {
         id: 'lc496',
@@ -303,6 +480,27 @@ for i, x in enumerate(nums):
 `,
         call: 'nextGreaterElement([4, 1, 2], [1, 3, 4, 2])',
         expected: '[-1, 3, -1]',
+        js: {
+          code: `/**
+ * @param {number[]} nums1
+ * @param {number[]} nums2
+ * @return {number[]}
+ */
+var nextGreaterElement = function(nums1, nums2) {
+    const nextGreater = new Map();
+    const stack = [];
+    for (const x of nums2) {
+        while (stack.length && stack[stack.length - 1] < x) {
+            nextGreater.set(stack.pop(), x);
+        }
+        stack.push(x);
+    }
+    return nums1.map((x) => nextGreater.has(x) ? nextGreater.get(x) : -1);
+};
+`,
+          call: 'nextGreaterElement([4, 1, 2], [1, 3, 4, 2])',
+          expected: '[-1, 3, -1]',
+        },
       },
     ],
   },

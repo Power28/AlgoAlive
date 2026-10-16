@@ -57,6 +57,31 @@ while left < right:
 `,
         call: 'twoSum([1, 3, 4, 5, 7, 10, 11], 9)',
         expected: '[3, 4]',
+        js: {
+          code: `/**
+ * @param {number[]} numbers
+ * @param {number} target
+ * @return {number[]}
+ */
+var twoSum = function(numbers, target) {
+    let left = 0;
+    let right = numbers.length - 1;
+    while (left < right) {
+        const sum = numbers[left] + numbers[right];
+        if (sum === target) {
+            return [left + 1, right + 1];
+        } else if (sum < target) {
+            left++;
+        } else {
+            right--;
+        }
+    }
+    return [];
+};
+`,
+          call: 'twoSum([1, 3, 4, 5, 7, 10, 11], 9)',
+          expected: '[3, 4]',
+        },
       },
       {
         id: 'lc11',
@@ -82,6 +107,31 @@ while left < right:
 `,
         call: 'maxArea([1, 8, 6, 2, 5, 4, 8, 3, 7])',
         expected: '49',
+        js: {
+          code: `/**
+ * @param {number[]} height
+ * @return {number}
+ */
+var maxArea = function(height) {
+    let left = 0;
+    let right = height.length - 1;
+    let best = 0;
+    while (left < right) {
+        const width = right - left;
+        const area = Math.min(height[left], height[right]) * width;
+        best = Math.max(best, area);
+        if (height[left] < height[right]) {
+            left++;
+        } else {
+            right--;
+        }
+    }
+    return best;
+};
+`,
+          call: 'maxArea([1, 8, 6, 2, 5, 4, 8, 3, 7])',
+          expected: '49',
+        },
       },
     ],
   },
@@ -131,6 +181,25 @@ return slow`,
 `,
         call: 'moveZeroes([0, 1, 0, 3, 12])',
         expected: '[1, 3, 12, 0, 0]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[]}
+ */
+var moveZeroes = function(nums) {
+    let slow = 0;
+    for (let fast = 0; fast < nums.length; fast++) {
+        if (nums[fast] !== 0) {
+            [nums[slow], nums[fast]] = [nums[fast], nums[slow]];
+            slow++;
+        }
+    }
+    return nums;
+};
+`,
+          call: 'moveZeroes([0, 1, 0, 3, 12])',
+          expected: '[1, 3, 12, 0, 0]',
+        },
       },
       {
         id: 'lc26',
@@ -148,6 +217,25 @@ return slow`,
 `,
         call: 'removeDuplicates([0, 0, 1, 1, 1, 2, 2, 3, 3, 4])',
         expected: '5',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number}
+ */
+var removeDuplicates = function(nums) {
+    let slow = 1;
+    for (let fast = 1; fast < nums.length; fast++) {
+        if (nums[fast] !== nums[fast - 1]) {
+            nums[slow] = nums[fast];
+            slow++;
+        }
+    }
+    return slow;
+};
+`,
+          call: 'removeDuplicates([0, 0, 1, 1, 1, 2, 2, 3, 3, 4])',
+          expected: '5',
+        },
       },
     ],
   },
@@ -202,6 +290,30 @@ for right in range(len(nums)):
 `,
         call: 'minSubArrayLen(7, [2, 3, 1, 2, 4, 3])',
         expected: '2',
+        js: {
+          code: `/**
+ * @param {number} target
+ * @param {number[]} nums
+ * @return {number}
+ */
+var minSubArrayLen = function(target, nums) {
+    let left = 0;
+    let windowSum = 0;
+    let best = Infinity;
+    for (let right = 0; right < nums.length; right++) {
+        windowSum += nums[right];
+        while (windowSum >= target) {
+            best = Math.min(best, right - left + 1);
+            windowSum -= nums[left];
+            left++;
+        }
+    }
+    return best === Infinity ? 0 : best;
+};
+`,
+          call: 'minSubArrayLen(7, [2, 3, 1, 2, 4, 3])',
+          expected: '2',
+        },
       },
       {
         id: 'lc3',
@@ -222,6 +334,29 @@ for right in range(len(nums)):
 `,
         call: 'lengthOfLongestSubstring("abcabcbb")',
         expected: '3',
+        js: {
+          code: `/**
+ * @param {string} s
+ * @return {number}
+ */
+var lengthOfLongestSubstring = function(s) {
+    const lastSeen = new Map();
+    let left = 0;
+    let best = 0;
+    for (let right = 0; right < s.length; right++) {
+        const ch = s[right];
+        if (lastSeen.has(ch) && lastSeen.get(ch) >= left) {
+            left = lastSeen.get(ch) + 1;
+        }
+        lastSeen.set(ch, right);
+        best = Math.max(best, right - left + 1);
+    }
+    return best;
+};
+`,
+          call: 'lengthOfLongestSubstring("abcabcbb")',
+          expected: '3',
+        },
       },
     ],
   },
@@ -279,6 +414,31 @@ return -1`,
 `,
         call: 'search([-1, 0, 3, 5, 9, 12, 15, 21], 12)',
         expected: '5',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @param {number} target
+ * @return {number}
+ */
+var search = function(nums, target) {
+    let lo = 0;
+    let hi = nums.length - 1;
+    while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (nums[mid] === target) {
+            return mid;
+        } else if (nums[mid] < target) {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return -1;
+};
+`,
+          call: 'search([-1, 0, 3, 5, 9, 12, 15, 21], 12)',
+          expected: '5',
+        },
       },
       {
         id: 'lc35',
@@ -298,6 +458,29 @@ return -1`,
 `,
         call: 'searchInsert([1, 3, 5, 6, 8, 10], 7)',
         expected: '4',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @param {number} target
+ * @return {number}
+ */
+var searchInsert = function(nums, target) {
+    let lo = 0;
+    let hi = nums.length;
+    while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (nums[mid] < target) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+};
+`,
+          call: 'searchInsert([1, 3, 5, 6, 8, 10], 7)',
+          expected: '4',
+        },
       },
     ],
   },
@@ -346,6 +529,22 @@ for x in nums:
 `,
         call: 'runningSum([3, 1, 2, 10, 1])',
         expected: '[3, 4, 6, 16, 17]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[]}
+ */
+var runningSum = function(nums) {
+    const prefix = new Array(nums.length).fill(0);
+    for (let i = 0; i < nums.length; i++) {
+        prefix[i] = nums[i] + (i > 0 ? prefix[i - 1] : 0);
+    }
+    return prefix;
+};
+`,
+          call: 'runningSum([3, 1, 2, 10, 1])',
+          expected: '[3, 4, 6, 16, 17]',
+        },
       },
       {
         id: 'lc560',
@@ -365,6 +564,27 @@ for x in nums:
 `,
         call: 'subarraySum([1, 2, 1, 2, 1], 3)',
         expected: '4',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @param {number} k
+ * @return {number}
+ */
+var subarraySum = function(nums, k) {
+    let count = 0;
+    let prefix = 0;
+    const seen = new Map([[0, 1]]);
+    for (const x of nums) {
+        prefix += x;
+        count += seen.get(prefix - k) || 0;
+        seen.set(prefix, (seen.get(prefix) || 0) + 1);
+    }
+    return count;
+};
+`,
+          call: 'subarraySum([1, 2, 1, 2, 1], 3)',
+          expected: '4',
+        },
       },
     ],
   },
@@ -423,6 +643,33 @@ for x in nums:
 `,
         call: 'sortColors([2, 0, 2, 1, 1, 0])',
         expected: '[0, 0, 1, 1, 2, 2]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[]}
+ */
+var sortColors = function(nums) {
+    let low = 0;
+    let mid = 0;
+    let high = nums.length - 1;
+    while (mid <= high) {
+        if (nums[mid] === 0) {
+            [nums[low], nums[mid]] = [nums[mid], nums[low]];
+            low++;
+            mid++;
+        } else if (nums[mid] === 1) {
+            mid++;
+        } else {
+            [nums[mid], nums[high]] = [nums[high], nums[mid]];
+            high--;
+        }
+    }
+    return nums;
+};
+`,
+          call: 'sortColors([2, 0, 2, 1, 1, 0])',
+          expected: '[0, 0, 1, 1, 2, 2]',
+        },
       },
       {
         id: 'lc912',
@@ -449,6 +696,35 @@ for x in nums:
 `,
         call: 'sortArray([5, 2, 3, 1, 6, 4])',
         expected: '[1, 2, 3, 4, 5, 6]',
+        js: {
+          code: `/**
+ * @param {number[]} nums
+ * @return {number[]}
+ */
+var sortArray = function(nums) {
+    const quickSort = (lo, hi) => {
+        if (lo >= hi) {
+            return;
+        }
+        const pivot = nums[hi];
+        let i = lo;
+        for (let j = lo; j < hi; j++) {
+            if (nums[j] < pivot) {
+                [nums[i], nums[j]] = [nums[j], nums[i]];
+                i++;
+            }
+        }
+        [nums[i], nums[hi]] = [nums[hi], nums[i]];
+        quickSort(lo, i - 1);
+        quickSort(i + 1, hi);
+    };
+    quickSort(0, nums.length - 1);
+    return nums;
+};
+`,
+          call: 'sortArray([5, 2, 3, 1, 6, 4])',
+          expected: '[1, 2, 3, 4, 5, 6]',
+        },
       },
     ],
   },

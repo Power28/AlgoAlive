@@ -63,6 +63,33 @@ while queue:
 `,
         call: 'cloneGraph(build_graph([[2, 4], [1, 3], [2, 4], [1, 3]]))',
         expected: 'Node(1)',
+        js: {
+          code: `/**
+ * @param {_Node} node
+ * @return {_Node}
+ */
+var cloneGraph = function(node) {
+    if (!node) {
+        return null;
+    }
+    const clones = new Map([[node, new _Node(node.val)]]);
+    const queue = [node];
+    while (queue.length) {
+        const cur = queue.shift();
+        for (const nei of cur.neighbors) {
+            if (!clones.has(nei)) {
+                clones.set(nei, new _Node(nei.val));
+                queue.push(nei);
+            }
+            clones.get(cur).neighbors.push(clones.get(nei));
+        }
+    }
+    return clones.get(node);
+};
+`,
+          call: 'node = [[2,4],[1,3],[2,4],[1,3]]',
+          expected: '_Node(1)',
+        },
       },
       {
         id: 'lc797',
@@ -89,6 +116,33 @@ while queue:
 `,
         call: 'allPathsSourceTarget([[1, 2], [3], [3], []])',
         expected: '[[0, 1, 3], [0, 2, 3]]',
+        js: {
+          code: `/**
+ * @param {number[][]} graph
+ * @return {number[][]}
+ */
+var allPathsSourceTarget = function(graph) {
+    const target = graph.length - 1;
+    const result = [];
+    const path = [0];
+    const dfs = (node) => {
+        if (node === target) {
+            result.push([...path]);
+            return;
+        }
+        for (const next of graph[node]) {
+            path.push(next);
+            dfs(next);
+            path.pop();
+        }
+    };
+    dfs(0);
+    return result;
+};
+`,
+          call: 'allPathsSourceTarget([[1, 2], [3], [3], []])',
+          expected: '[[0, 1, 3], [0, 2, 3]]',
+        },
       },
       {
         id: 'lc785',
@@ -115,6 +169,37 @@ while queue:
 `,
         call: 'isBipartite([[1, 3], [0, 2], [1, 3], [0, 2]])',
         expected: 'True',
+        js: {
+          code: `/**
+ * @param {number[][]} graph
+ * @return {boolean}
+ */
+var isBipartite = function(graph) {
+    const color = new Array(graph.length).fill(-1);
+    for (let start = 0; start < graph.length; start++) {
+        if (color[start] !== -1) {
+            continue;
+        }
+        color[start] = 0;
+        const queue = [start];
+        while (queue.length) {
+            const node = queue.shift();
+            for (const nei of graph[node]) {
+                if (color[nei] === -1) {
+                    color[nei] = 1 - color[node];
+                    queue.push(nei);
+                } else if (color[nei] === color[node]) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+};
+`,
+          call: 'isBipartite([[1, 3], [0, 2], [1, 3], [0, 2]])',
+          expected: 'true',
+        },
       },
     ],
   },

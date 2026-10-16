@@ -10,6 +10,7 @@ const STRINGS = {
   guide: { en: 'Guide', zh: '教學' },
   testCall: { en: 'Test call', zh: '測試呼叫' },
   languageLabel: { en: 'Language', zh: '語言' },
+  tutorialLanguage: { en: 'Examples in', zh: '範例語言' },
   languageHint: { en: 'Programming language of this tab (edited code is never overwritten — a new tab opens instead)', zh: '這個頁籤的程式語言（已修改的程式碼不會被覆蓋，會改開新頁籤）' },
   callInterpreted: { en: 'Read as', zh: '解讀為' },
   convNote: { en: '{param} → {kind}', zh: '{param} 自動轉成{kind}' },
