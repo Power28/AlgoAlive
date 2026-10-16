@@ -4,6 +4,8 @@ import { formatCell, formatValue, valueKey } from '../lib/value';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
 import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
+import { isGap } from '../lib/sparse';
+import { useT } from '../i18n';
 
 const MIN_CELL = 48;
 const MAX_CELL = 120;
@@ -35,9 +37,13 @@ interface Props {
   wholeWritten?: boolean;
   /** 這一行對這個序列做的切片 */
   slices?: SliceInfo[];
+  /** 大陣列只顯示部分格子：每一格的真實索引（省略的「…」格為 -1）與完整長度 */
+  indexes?: number[];
+  length?: number;
 }
 
-export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten, slices = [] }: Props) {
+export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten, slices = [], indexes, length }: Props) {
+  const t = useT();
   const fmt = useValueFormat();
   const heap = useHeap();
   const n = items.length;
@@ -85,7 +91,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
 
   return (
     <section className="rounded-lg" style={markOutline(!!wholeCompared, !!wholeWritten)}>
-      <Header name={name} kind={kind} meta={`len ${n + (truncated ?? 0)}`} />
+      <Header name={name} kind={kind} meta={`len ${length ?? n + (truncated ?? 0)}`} />
       <div className="scrollbar-thin overflow-x-auto pb-1">
         <div className="relative px-1 pt-1" style={{ width: Math.max(width, STEP) + 8 }}>
           {sliceBands.map((sl) => (
@@ -114,6 +120,23 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
           <div className="relative flex" style={{ gap: GAP, paddingLeft: 4, paddingTop: 3 }}>
             <AnimatePresence initial={false} mode="popLayout">
             {items.map((item, i) => {
+              if (isGap(item)) {
+                // 大陣列中沒有送出的區段
+                return (
+                  <motion.div
+                    key={keys[i] ?? i}
+                    layout
+                    layoutDependency={order}
+                    transition={spring}
+                    className="flex shrink-0 items-center justify-center rounded-md border border-dashed border-ink-600 font-mono text-ink-400"
+                    style={{ width: CELL, height: CELL }}
+                    title={t('cellsHidden')}
+                    data-gap
+                  >
+                    …
+                  </motion.div>
+                );
+              }
               const changed = prevItems !== undefined && valueKey(prevItems[i]) !== valueKey(item);
               const accent = colorAt.get(i);
               const text = formatCell(item, heap, fmt);
@@ -161,7 +184,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
           <div className="flex font-mono text-[11px] text-ink-400" style={{ gap: GAP, paddingLeft: 4 }}>
             {items.map((_, i) => (
               <div key={i} className="shrink-0 pt-1 text-center" style={{ width: CELL }}>
-                {i}
+                {indexes ? (indexes[i] >= 0 ? indexes[i] : '') : i}
               </div>
             ))}
           </div>

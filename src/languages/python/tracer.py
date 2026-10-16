@@ -21,6 +21,10 @@ import re
 MAX_STEPS = 500          # 預設的步數上限；到達上限後使用者可以選擇追蹤更多步
 MAX_STEPS_LIMIT = 5000   # 最多能追蹤的步數（約 13 MB 的追蹤資料）
 MAX_ITEMS = 100      # 單一容器最多序列化的元素數
+SPARSE_HEAD = 10     # 超過 MAX_ITEMS 的陣列：開頭保留幾格
+SPARSE_TAIL = 5      # 結尾保留幾格
+SPARSE_AROUND = 4    # 每個指針（整數變數）前後各保留幾格
+SPARSE_MAX = 150     # 最多送出幾格
 MAX_DEPTH = 5        # 巢狀容器最大深度
 MAX_STR = 200
 MAX_STDOUT = 10000
@@ -163,6 +167,8 @@ class _Ctx:
         self.registry = registry
         self.heap = {}
         self.queue = []
+        # 這一步的整數變數：大陣列只送出這些位置（可能是指針）附近的格子
+        self.focus = set()
 
     def ref(self, obj):
         sid = self.registry.sid(obj)
@@ -187,6 +193,19 @@ class _Ctx:
 def _is_object(v):
     """使用者 / prelude 定義的類別實例（ListNode、TreeNode…）→ 以參照方式序列化。"""
     return type(v).__module__ == "__main__" and hasattr(v, "__dict__") and not isinstance(v, BaseException)
+
+
+def _sparse_indexes(n, focus):
+    """大陣列要送出的位置：開頭、結尾、每個指針前後幾格（由小到大，最多 SPARSE_MAX 格）"""
+    keep = set(range(min(SPARSE_HEAD, n))) | set(range(max(0, n - SPARSE_TAIL), n))
+    # 離開頭近的指針先保留，超過上限時捨棄較後面的
+    for f in sorted(focus):
+        for i in range(f - SPARSE_AROUND, f + SPARSE_AROUND + 1):
+            if 0 <= i < n:
+                keep.add(i)
+        if len(keep) >= SPARSE_MAX:
+            break
+    return sorted(keep)[:SPARSE_MAX]
 
 
 def _ser(v, ctx=None, depth=0, seen=None):
@@ -221,6 +240,10 @@ def _ser(v, ctx=None, depth=0, seen=None):
     if isinstance(v, (list, tuple, collections.deque)):
         kind = "list" if isinstance(v, list) else ("tuple" if isinstance(v, tuple) else "deque")
         items = list(v)
+        if len(items) > MAX_ITEMS and depth == 0 and ctx is not None:
+            # 大陣列：開頭、結尾，以及每個指針附近的格子；index 是每一格的真實索引
+            keep = _sparse_indexes(len(items), ctx.focus)
+            return {"type": kind, "items": [_ser(items[i], ctx, depth + 1, seen) for i in keep], "index": keep, "length": len(items)}
         out = {"type": kind, "items": [_ser(x, ctx, depth + 1, seen) for x in items[:MAX_ITEMS]]}
         if len(items) > MAX_ITEMS:
             out["truncated"] = len(items) - MAX_ITEMS
@@ -2081,6 +2104,7 @@ def algoalive_run(code, call_src, max_steps=None):
         if len(steps) >= limit:
             raise TimeoutError(f"Execution exceeded {limit} steps (possible infinite loop)")
         ctx = _Ctx(registry)
+        ctx.focus = {x for _, x in _visible_locals(frame) if isinstance(x, int) and not isinstance(x, bool) and 0 <= x < 10 ** 7}
         depth = _user_depth(frame)
         variables, stack_refs = _snapshot(frame, ctx, depth)
         step = {

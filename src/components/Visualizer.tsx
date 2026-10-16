@@ -25,6 +25,8 @@ import { HeapView } from './HeapView';
 import { RecursionTree } from './RecursionTree';
 import type { CallTree } from '../lib/callTree';
 import { cellsOf, gridCellsOf, stepMarks } from '../lib/stepMarks';
+import { expandSparse, isSparse, toPositions, type SparseView } from '../lib/sparse';
+import type { SliceInfo } from '../types';
 import { adjacencyGraph, graphOverlay, isAdjacencyName, objectGraph, type GraphModel } from '../lib/graph';
 
 interface Props {
@@ -87,7 +89,8 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
     graphs.push({ graph: g, prev: prev?.heap ? (objectGraph(prev.heap) ?? undefined) : undefined });
   }
   for (const [name, v] of entries) {
-    if (!isAdjacencyName(name)) continue;
+    // 只送出部分格子的大陣列不能當成完整的鄰接串列
+    if (!isAdjacencyName(name) || isSparse(v)) continue;
     const g = adjacencyGraph(name, v);
     if (!g) continue;
     const p = prevVars?.[name];
@@ -113,12 +116,20 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
   }
 
   // 1D 序列：list / tuple / deque，以及「被當成陣列使用」的字串
-  const sequences: { name: string; kind: string; items: Value[]; truncated?: number; prevItems?: Value[] }[] = [];
+  const sequences: { name: string; kind: string; items: Value[]; truncated?: number; prevItems?: Value[]; sparse?: SparseView }[] = [];
   const shownAsCells = new Set<string>();
   for (const [name, v] of entries) {
     const p = prevVars?.[name];
     if (graphVars.has(name)) continue;
-    if (isSequence(v) && !isGrid(v)) {
+    if (isSparse(v)) {
+      // 大陣列：展開成格子，省略的區段顯示「…」；上一步的值依真實索引對齊
+      const view = expandSparse(v);
+      const prevView = isSparse(p) ? expandSparse(p) : null;
+      const prevAt = (r: number) => (prevView ? prevView.at(r) : p && isSequence(p) ? p.items[r] : undefined);
+      const prevItems = view.real.map((r, i) => (r < 0 ? view.items[i] : (prevAt(r) ?? view.items[i])));
+      sequences.push({ name, kind: v.type, items: view.items, prevItems, sparse: view });
+      shownAsCells.add(name);
+    } else if (isSequence(v) && !isGrid(v)) {
       sequences.push({ name, kind: v.type, items: v.items, truncated: v.truncated, prevItems: p && isSequence(p) ? p.items : undefined });
       shownAsCells.add(name);
     } else if (v.type === 'str' && v.value.length >= 2 && v.value.length <= MAX_CHAR_CELLS) {
@@ -138,16 +149,27 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
 
   const pointerColors = new Map<string, string>();
   const pointersByList = sequences.map((s) => {
-    const ps = pointersFor(vars, s.name, s.items.length, indexMap, gridVars);
+    const length = s.sparse?.length ?? s.items.length;
+    let ps = pointersFor(vars, s.name, length, indexMap, gridVars);
     // for num in nums：沒有索引變數，用迴圈目前的圈數在 nums 上標出 num
     for (const loop of step.event === 'line' ? (step.loops ?? []) : []) {
       if (loop.seq !== s.name || !loop.item || loop.done || ps.some((p) => p.name === loop.item)) continue;
       const index = loop.iteration - 1;
-      if (index >= 0 && index < s.items.length) ps.push({ name: loop.item, label: loop.item, index, color: pointerColor(loop.item) });
+      if (index >= 0 && index < length) ps.push({ name: loop.item, label: loop.item, index, color: pointerColor(loop.item) });
     }
+    // 大陣列：真實索引換算成畫面上的格子
+    const view = s.sparse;
+    if (view) ps = ps.flatMap((p) => (view.toPos(p.index) === null ? [] : [{ ...p, index: view.toPos(p.index)! }]));
     ps.forEach((p) => pointerColors.set(p.name, p.color));
     return ps;
   });
+  /** 大陣列的切片範圍換算成畫面上的格子（只處理連續的切片） */
+  const sliceOn = (view: SparseView, sl: SliceInfo): SliceInfo[] => {
+    if (sl.step !== 1 || sl.stop <= sl.start) return [];
+    const first = view.real.findIndex((r) => r >= sl.start);
+    const last = view.real.reduce((acc, r, i) => (r >= 0 && r < sl.stop ? i : acc), -1);
+    return first >= 0 && last >= first ? [{ ...sl, start: first, stop: last + 1 }] : [];
+  };
   for (const name of gridVars) if (!pointerColors.has(name)) pointerColors.set(name, pointerColor(name));
 
   const gridNames = new Set(grids.map(([n]) => n));
@@ -235,7 +257,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
       ))}
       {sequences.map((s, i) => (
         <div key={s.name} className="flex flex-col gap-3">
-        {s.kind === 'list' && (heapNames?.has(s.name) || /^(heap|min_?heap|max_?heap|pq|priority_?queue)$/i.test(s.name)) && (
+        {s.kind === 'list' && !s.sparse && (heapNames?.has(s.name) || /^(heap|min_?heap|max_?heap|pq|priority_?queue)$/i.test(s.name)) && (
           <HeapView name={s.name} items={s.items} keys={cellKeys[s.name] ?? []} prevItems={s.prevItems} written={cellsOf(writes, s.name)} />
         )}
         <ArrayView
@@ -244,14 +266,21 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
           kind={s.kind}
           items={s.items}
           truncated={s.truncated}
-          keys={cellKeys[s.name] ?? []}
+          // 大陣列的格子以真實索引當身分（只送出部分格子，不做交換動畫的配對）
+          keys={s.sparse ? s.sparse.real.map((r, k) => (r >= 0 ? `i${r}` : `gap${k}`)) : (cellKeys[s.name] ?? [])}
           prevItems={s.prevItems}
           pointers={pointersByList[i]}
-          compared={cellsOf(marks, s.name)}
+          compared={s.sparse ? toPositions(cellsOf(marks, s.name), s.sparse) : cellsOf(marks, s.name)}
           wholeCompared={marks.vars.has(s.name)}
-          written={cellsOf(writes, s.name)}
+          written={s.sparse ? toPositions(cellsOf(writes, s.name), s.sparse) : cellsOf(writes, s.name)}
           wholeWritten={writes.vars.has(s.name)}
-          slices={step.event === 'line' ? step.slices?.filter((sl) => sl.var === s.name) : undefined}
+          slices={
+            step.event === 'line'
+              ? step.slices?.filter((sl) => sl.var === s.name).flatMap((sl) => (s.sparse ? sliceOn(s.sparse, sl) : [sl]))
+              : undefined
+          }
+          indexes={s.sparse?.real}
+          length={s.sparse?.length}
         />
         </div>
       ))}

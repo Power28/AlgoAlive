@@ -76,6 +76,18 @@ def fmt(v, heap=None):
     if t == "str":
         s = v["value"].replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
         return f"'{s}'"
+    if t in ("list", "tuple", "deque") and "index" in v:
+        # 大陣列只送出部分格子：省略的區段寫成 …（與前端相同）
+        parts, prev = [], -1
+        for r, x in zip(v["index"], v["items"]):
+            if r > prev + 1:
+                parts.append("…")
+            parts.append(f(x))
+            prev = r
+        if prev < v["length"] - 1:
+            parts.append("…")
+        body = ", ".join(parts)
+        return {"list": f"[{body}]", "deque": f"deque([{body}])", "tuple": f"({body})"}[t]
     if t == "list":
         return f"[{', '.join(map(f, v['items']))}{more}]"
     if t == "deque":
@@ -164,6 +176,34 @@ def run(code, call):
 # ─────────────── tracer 行為測試 ───────────────
 
 def tracer_cases():
+    def large_lists():
+        code = (
+            "def search(nums, target):\n"
+            "    lo, hi = 0, len(nums) - 1\n"
+            "    while lo <= hi:\n"
+            "        mid = (lo + hi) // 2\n"
+            "        if nums[mid] == target:\n"
+            "            return mid\n"
+            "        elif nums[mid] < target:\n"
+            "            lo = mid + 1\n"
+            "        else:\n"
+            "            hi = mid - 1\n"
+            "    return -1\n"
+        )
+        r = run(code, "search(list(range(0, 30000, 3)), 24000)")
+        if fmt(r["returnValue"]) != "8000":
+            return f"returned {fmt(r['returnValue'])}"
+        for s in r["steps"]:
+            nums = s["variables"]["nums"]
+            mid = s["variables"].get("mid", {}).get("value")
+            if nums.get("length") != 10000 or len(nums["items"]) > 150:
+                return f"nums should be sent sparsely: {nums.get('length')} / {len(nums['items'])} items"
+            if mid is not None and mid not in nums["index"]:
+                return f"the cell at mid = {mid} should be sent"
+        big = run("def f():\n    return list(range(200))\n", "f()")
+        if fmt(big["returnValue"]) != "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, …, 195, 196, 197, 198, 199]":
+            return f"large return value: {fmt(big['returnValue'])}"
+
     def step_limit_option():
         code = "def f(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n"
         r = run(code, "f(300)")
@@ -618,6 +658,7 @@ def tracer_cases():
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("a higher step limit can be requested (up to 5000)", step_limit_option),
+        ("large lists send the cells around every pointer", large_lists),
         ("syntax error reports line", syntax_error),
         ("runtime error reports line", runtime_error_line),
         ("class Solution hides self", class_solution),

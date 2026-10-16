@@ -662,6 +662,12 @@ async function testStepLimit(page, url) {
     tabs: [
       { id: 'long', title: 'long', code: 'def total(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n', call: 'total(300)' },
       { id: 'spin', title: 'spin', code: 'def spin(n):\n    i = 0\n    while i < n:\n        i = i * 1\n    return i\n', call: 'spin(3)' },
+      {
+        id: 'big',
+        title: 'big',
+        code: 'def search(nums, target):\n    lo, hi = 0, len(nums) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n',
+        call: 'search(list(range(0, 3000, 3)), 2400)',
+      },
     ],
     activeId: 'long',
   };
@@ -695,6 +701,26 @@ async function testStepLimit(page, url) {
   record(
     'a repeating state is reported as an infinite loop',
     loop?.kind === 'loop' && /Steps \d+ and \d+ are in exactly the same state/.test(loop.text) && !moreButton ? null : `got ${JSON.stringify(loop)}`,
+  );
+
+  // 大陣列（1,000 個元素）：只畫出開頭、結尾與指針附近的格子，索引是真實的位置
+  await page.click('[role="tab"]:nth-child(3)');
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  for (let i = 0; i < 5; i++) await page.click('[data-action="next"]');
+  await sleep(400);
+  const big = await page.evaluate(() => {
+    const section = [...document.querySelectorAll('main section')].find((el) => el.innerText.startsWith('nums'));
+    return {
+      header: section?.innerText.split('\n').slice(0, 3).join(' ') ?? '',
+      gaps: section?.querySelectorAll('[data-gap]').length ?? 0,
+      labels: section ? [...section.querySelectorAll('.text-center')].map((e) => e.textContent) : [],
+      pointers: section?.innerText.includes('mid') ?? false,
+    };
+  });
+  record(
+    'large arrays show the cells around the pointers with their real indexes',
+    /len 1000/.test(big.header) && big.gaps >= 2 && big.labels.includes('499') && big.labels.includes('999') && big.pointers ? null : `got ${JSON.stringify({ ...big, labels: big.labels.slice(0, 30) })}`,
   );
 
   await page.evaluate((v) => (v ? localStorage.setItem('algoalive.tabs.v1', v) : localStorage.removeItem('algoalive.tabs.v1')), saved);

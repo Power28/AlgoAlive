@@ -37,6 +37,18 @@ export function formatValue(v: Value, heap?: Heap, format: ValueFormat = pythonF
     case 'deque':
     case 'tuple':
     case 'set':
+      if (v.index && v.length !== undefined) {
+        // 大陣列只送出部分格子：省略的區段寫成 …
+        const parts: string[] = [];
+        let prev = -1;
+        v.index.forEach((r, k) => {
+          if (r > prev + 1) parts.push('…');
+          parts.push(f(v.items[k]));
+          prev = r;
+        });
+        if (prev < v.length - 1) parts.push('…');
+        return format.container(v.type, parts, '');
+      }
       return format.container(v.type, v.items.map(f), more(v.truncated));
     case 'dict':
       return format.container('dict', v.entries.map(([k, x]) => `${f(k)}: ${f(x)}`), more(v.truncated));

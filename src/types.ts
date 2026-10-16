@@ -5,7 +5,14 @@ export type Value =
   | { type: 'int'; value: number | string }
   | { type: 'float'; value: number | string }
   | { type: 'str'; value: string }
-  | { type: 'list' | 'tuple' | 'deque' | 'set'; items: Value[]; truncated?: number }
+  | {
+      type: 'list' | 'tuple' | 'deque' | 'set';
+      items: Value[];
+      truncated?: number;
+      /** 大陣列只送出部分格子：每一格的真實索引（由小到大），以及完整長度 */
+      index?: number[];
+      length?: number;
+    }
   | { type: 'dict'; entries: [Value, Value][]; cls?: string; truncated?: number }
   | { type: 'repr'; value: string; cls?: string }
   /** 自訂類別實例（ListNode、TreeNode…）的參照，內容在 step.heap[id] */
