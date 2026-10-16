@@ -50,4 +50,5 @@ export const jsFormat: ValueFormat = {
   logic: { and: '&&', or: '||', not: '!' },
   truthReason,
   shortCircuit: { and: 'shortAndJs', or: 'shortOrJs' },
+  handler: 'catch',
 };

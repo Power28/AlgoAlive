@@ -617,6 +617,16 @@ async function testJavaScript(page) {
   record('JavaScript condition cards use || and true', /0 === 0 \|\| …[\s\S]*true[\s\S]*\|\| stops at the first truthy value/.test(cond) ? null : `got ${JSON.stringify(cond)}`);
   const op = await openAndStepTo(page, 'javascript', 'js1', '[data-op]', 'seen');
   record('JavaScript container ops get a card', /seen\.set\(nums\[i\], i\)[\s\S]*seen\[2\] = 0/.test(op) ? null : `got ${JSON.stringify(op)}`);
+
+  // 內建函式：JavaScript 的 sort 依比較函式排序，格子滑到新位置
+  await openAndStepTo(page, 'javascript', 'js1984', '[data-builtin]', 'sort', { keepOpen: true });
+  await sleep(1200);
+  const sorted = await page.evaluate(() => ({
+    title: document.querySelector('main [data-builtin]')?.innerText.split('\n')[0] ?? '',
+    order: document.querySelector('main [data-reorder]')?.innerText.split(/\s+/).join(' ') ?? '',
+  }));
+  await page.click('[role="tab"][aria-selected="true"] button');
+  record('JavaScript sort gets a built-in card', /sort/i.test(sorted.title) && sorted.order === '1 4 7 9' ? null : `got ${JSON.stringify(sorted)}`);
 }
 
 async function testLanguage(page) {

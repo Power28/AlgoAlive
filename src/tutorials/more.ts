@@ -602,6 +602,33 @@ var reverseList = function(head) {
         call: '["MinStack","push","push","push","getMin","pop","top","getMin"], [[],[-2],[0],[-3],[],[],[],[]]',
         expected: '[null, null, null, null, -3, null, 0, -2]',
       },
+      {
+        id: 'js1984',
+        number: 1984,
+        title: { en: 'Minimum Difference of K Scores (JavaScript)', zh: '學生分數的最小差值（JavaScript）' },
+        difficulty: 'easy',
+        language: 'javascript',
+        note: {
+          en: 'Watch `sort` slide the scores into place — without `(a, b) => a - b` JavaScript would sort them as strings.',
+          zh: '看 `sort` 把分數滑到排序後的位置——沒有 `(a, b) => a - b` 的話，JavaScript 會依字串排序。',
+        },
+        code: `/**
+ * @param {number[]} nums
+ * @param {number} k
+ * @return {number}
+ */
+var minimumDifference = function(nums, k) {
+    nums.sort((a, b) => a - b);
+    const diffs = [];
+    for (let i = 0; i + k - 1 < nums.length; i++) {
+        diffs.push(nums[i + k - 1] - nums[i]);
+    }
+    return Math.min(...diffs);
+};
+`,
+        call: 'nums = [9,4,1,7], k = 2',
+        expected: '2',
+      },
     ],
   },
 ];

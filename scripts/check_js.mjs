@@ -247,6 +247,75 @@ check('destructuring swap, slices, continue and loop passes', () => {
   if (C.steps.some((s) => s.lineNumber === 25 && s.loops)) return 'loops should end when leaving the loop';
 });
 
+// ─────────────── try / catch 與內建函式 ───────────────
+
+console.log('\nJavaScript try / catch and built-ins');
+
+check('try / catch / finally flow', () => {
+  const code = `function check(x) {
+    if (x < 0) throw new RangeError("negative: " + x);
+    return x;
+}
+function f(xs) {
+    let total = 0;
+    for (const x of xs) {
+        try {
+            total += check(x);
+        } catch (e) {
+            total -= 1;
+        } finally {
+            total *= 1;
+        }
+    }
+    return total;
+}
+function g(s) {
+    try {
+        return JSON.parse(s);
+    } finally {
+        s = null;
+    }
+}`;
+  const r = traceJs(code, 'f([2, -1])');
+  if (int(r.returnValue) !== 1) return `returned ${JSON.stringify(r.returnValue)}`;
+  const flows = r.steps.filter((s) => s.tryFlow).map((s) => `${s.lineNumber}:${s.tryFlow.kind}${s.tryFlow.reraise === false ? ':handled' : ''}`);
+  if (JSON.stringify(flows) !== '["8:try","12:finally","8:try","10:except","12:finally:handled"]') return `try flow ${JSON.stringify(flows)}`;
+  const excs = r.steps.filter((s) => s.exc).map((s) => `${s.funcName}:${s.exc.type}:${s.exc.outcome.kind}:${s.exc.outcome.line ?? ''}`);
+  if (JSON.stringify(excs) !== '["check:RangeError:propagate:9","f:RangeError:caught:10"]') return `exceptions ${JSON.stringify(excs)}`;
+  const except = r.steps.find((s) => s.tryFlow?.kind === 'except').tryFlow;
+  if (except.as !== 'e' || except.message !== 'negative: -1') return `except card ${JSON.stringify(except)}`;
+  // try / finally：finally 之後繼續往外拋，不是「回傳 undefined」
+  const g = traceJs(code, 'g("{")');
+  const fin = g.steps.find((s) => s.tryFlow?.kind === 'finally')?.tryFlow;
+  if (g.error?.type !== 'SyntaxError' || !fin?.reraise || g.steps.some((s) => s.event === 'return')) return `try / finally ${JSON.stringify({ error: g.error, fin })}`;
+  const route = g.steps.find((s) => s.exc)?.exc;
+  if (route?.outcome.kind !== 'uncaught' || route.route[0]?.finally !== 21) return `route ${JSON.stringify(route)}`;
+});
+
+check('built-in methods are explained item by item', () => {
+  const code = `function f(nums, words) {
+    const total = nums.reduce((acc, x) => acc + x, 0);
+    const best = Math.max(...nums);
+    nums.sort((a, b) => a - b);
+    const byStr = [10, 9, 1].toSorted();
+    const big = nums.some(x => x > 3);
+    const s = words.join("-");
+    const uniq = new Set(nums);
+    const odd = nums.filter(x => x % 2 === 1);
+    return total;
+}`;
+  const r = traceJs(code, 'f([3, 1, 4, 1, 5], ["ab", "abc", "a"])');
+  const b = Object.fromEntries(r.steps.flatMap((s) => (s.builtins ?? []).map((x) => [x.label, x])));
+  if (JSON.stringify(b.reduce?.running) !== '["3","4","8","9","14"]' || b.reduce.init !== '0') return `reduce ${JSON.stringify(b.reduce)}`;
+  if (b['Math.max']?.pick !== 4) return `Math.max ${JSON.stringify(b['Math.max'])}`;
+  if (JSON.stringify(b.sort?.order) !== '[1,3,0,2,4]' || b.sort.target !== 'nums') return `sort ${JSON.stringify(b.sort)}`;
+  if (!b.toSorted?.byString || b.toSorted.result !== '[1, 10, 9]') return `toSorted ${JSON.stringify(b.toSorted)}`;
+  if (b.some?.stop !== 3 || JSON.stringify(b.some.truth) !== '[false,false,false,true]') return `some ${JSON.stringify(b.some)}`;
+  if (b.join?.result !== '"ab-abc-a"') return `join ${JSON.stringify(b.join)}`;
+  if (JSON.stringify(b['new Set']?.kept) !== '[true,false,true,true,true]') return `new Set ${JSON.stringify(b['new Set'])}`;
+  if (b.filter?.result !== '[1, 1, 3, 5]') return `filter ${JSON.stringify(b.filter)}`;
+});
+
 // ─────────────── JavaScript 教學範例：回傳值依前端 jsFormat 的規則格式化後，等於 expected ───────────────
 
 /** 與 src/lib/value.ts 的 formatValue（src/languages/javascript/format.ts）相同的格式化 */

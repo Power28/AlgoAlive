@@ -9,7 +9,7 @@
  *
  * 只有沒有副作用的子運算式才會產生 thunk（例如 stack.pop() 不會），與 Python 的 _is_pure 相同。
  */
-import type { Calc, Condition, ConditionPart, ConditionTerm, ContainerOp, LogicNode, MultiAssign, SliceInfo, TermLocation } from '../../types';
+import type { BuiltinCall, Calc, Condition, ConditionPart, ConditionTerm, ContainerOp, LogicNode, MultiAssign, SliceInfo, TermLocation } from '../../types';
 import { isNodeObject, ser, short, type Ctx, type Registry } from './serialize.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +104,38 @@ export interface LoopSpec {
   total?: { k: 'seq'; th: number } | { k: 'range'; varTh: number; boundTh: number; cmp: string; dir: 1 | -1 };
 }
 
+/** try 敘述的靜態資訊；parent 是包住它的 try 區塊（同一個函式內） */
+export interface TrySpec {
+  line: number;
+  end: number;
+  parent: number | null;
+  catchLine?: number;
+  catchSrc?: string;
+  param?: string;
+  finallyLine?: number;
+}
+
+/** 內建函式 / 陣列方法：reduce、Math.max(...a)、sort、some / every、join、new Set(a)、map、filter… */
+export interface BuiltinSpec {
+  kind: 'reduce' | 'max' | 'min' | 'sort' | 'sorted' | 'reverse' | 'reversed' | 'some' | 'every' | 'join' | 'set' | 'map' | 'filter';
+  label: string;
+  src: string;
+  /** 被處理的陣列 */
+  recv: number;
+  /** 回呼函式（只接受沒有副作用的單一運算式箭頭函式） */
+  fn?: number;
+  /** reduce 的初始值、join 的分隔字串 */
+  arg?: number;
+  /** 回呼函式的本體與參數，例如 x > 3 / x */
+  elt?: string;
+  var?: string;
+  target?: string;
+}
+
 export interface StepSpec {
+  builtins?: BuiltinSpec[];
+  /** try 這一行是完整的卡片；catch / finally 執行時才知道例外的內容 */
+  tryFlow?: { kind: 'try'; handlers: string[]; finally: number | null } | { kind: 'except' | 'finally'; tryId: number };
   cond?: CondSpec;
   calc?: CalcSpec;
   op?: OpSpec;
@@ -481,6 +512,106 @@ export class Analyzer {
     };
     visit(stmt);
     return out;
+  }
+
+  // ── 內建函式 ──
+
+  /** 單一運算式、沒有副作用的箭頭函式（x => x > 3、(a, b) => a - b）：可以預先呼叫，不會產生步驟 */
+  private callback(n: N): { th: number; elt: string; params: string[] } | null {
+    if (n?.type !== 'ArrowFunctionExpression' || n.body.type === 'BlockStatement' || n.async) return null;
+    if (!n.params.every((p: N) => p.type === 'Identifier') || !isPure(n.body)) return null;
+    return { th: -1, elt: this.src(n.body), params: n.params.map((p: N) => p.name) };
+  }
+
+  builtins(root: N, tl: Thunks): BuiltinSpec[] {
+    const found: BuiltinSpec[] = [];
+    const visit = (n: N) => {
+      if (!n || typeof n.type !== 'string' || n.type.includes('Function')) return;
+      // && / || 右邊、三元運算子的分支不一定會執行：不預先說明
+      if (n.type === 'LogicalExpression') {
+        visit(n.left);
+        return;
+      }
+      if (n.type === 'ConditionalExpression') {
+        visit(n.test);
+        return;
+      }
+      for (const key of Object.keys(n)) {
+        if (key === 'loc') continue;
+        const v = n[key];
+        if (Array.isArray(v)) v.forEach(visit);
+        else if (v && typeof v.type === 'string') visit(v);
+      }
+      const spec = this.builtin(n, tl);
+      if (spec) found.push(spec); // 後序：內層的呼叫先求值，排在前面
+    };
+    visit(root);
+    return found.slice(0, 2);
+  }
+
+  private builtin(n: N, tl: Thunks): BuiltinSpec | null {
+    const src = this.src(n);
+    // new Set(arr)
+    if (n.type === 'NewExpression' && n.callee.type === 'Identifier' && n.callee.name === 'Set' && n.arguments.length === 1 && isPure(n.arguments[0])) {
+      return { kind: 'set', label: 'new Set', src, recv: tl.add(this.src(n.arguments[0])) };
+    }
+    if (n.type !== 'CallExpression' || n.callee.type !== 'MemberExpression' || n.callee.computed) return null;
+    const method = n.callee.property.name;
+    const obj = n.callee.object;
+    const args = n.arguments;
+    // Math.max(...nums)
+    if (obj.type === 'Identifier' && obj.name === 'Math' && (method === 'max' || method === 'min')) {
+      if (args.length !== 1 || args[0].type !== 'SpreadElement' || !isPure(args[0].argument)) return null;
+      return { kind: method, label: `Math.${method}`, src, recv: tl.add(this.src(args[0].argument)) };
+    }
+    if (!isPure(obj)) return null;
+    const recv = tl.add(this.src(obj));
+    const withFn = (kind: BuiltinSpec['kind'], fnNode: N, optional = false): BuiltinSpec | null => {
+      if (!fnNode) return optional ? { kind, label: method, src, recv } : null;
+      const cb = this.callback(fnNode);
+      if (!cb) return null;
+      const spec: BuiltinSpec = { kind, label: method, src, recv, fn: tl.add(this.src(fnNode)), elt: cb.elt };
+      if (cb.params[0]) spec.var = cb.params[0];
+      return spec;
+    };
+    switch (`${method}/${args.length}`) {
+      case 'reduce/1':
+      case 'reduce/2': {
+        const spec = withFn('reduce', args[0]);
+        if (spec && args[1]) {
+          if (!isPure(args[1])) return null;
+          spec.arg = tl.add(this.src(args[1]));
+        }
+        return spec;
+      }
+      case 'sort/0':
+      case 'sort/1': {
+        const spec = withFn('sort', args[0], true);
+        const target = varName(obj);
+        if (spec && target) spec.target = target;
+        return spec;
+      }
+      case 'toSorted/0':
+      case 'toSorted/1':
+        return withFn('sorted', args[0], true);
+      case 'reverse/0':
+        return { kind: 'reverse', label: method, src, recv, ...(varName(obj) ? { target: varName(obj)! } : {}) };
+      case 'toReversed/0':
+        return { kind: 'reversed', label: method, src, recv };
+      case 'some/1':
+        return withFn('some', args[0]);
+      case 'every/1':
+        return withFn('every', args[0]);
+      case 'map/1':
+        return withFn('map', args[0]);
+      case 'filter/1':
+        return withFn('filter', args[0]);
+      case 'join/0':
+        return { kind: 'join', label: method, src, recv };
+      case 'join/1':
+        return isPure(args[0]) ? { kind: 'join', label: method, src, recv, arg: tl.add(this.src(args[0])) } : null;
+    }
+    return null;
   }
 
   // ── 迴圈 ──
@@ -913,6 +1044,157 @@ export class CardBuilder {
       out.push({ var: s.var, src: s.src, start, stop, step: 1, display: resultShort(result.v) });
     }
     return out;
+  }
+
+  // ── 內建函式：執行前算出每個元素怎麼被處理（回呼函式都是沒有副作用的單一運算式） ──
+
+  builtins(specs: BuiltinSpec[]): BuiltinCall[] {
+    const out: BuiltinCall[] = [];
+    for (const spec of specs) {
+      try {
+        const call = this.builtin(spec);
+        if (call) out.push(call);
+      } catch {
+        // 回呼函式出錯之類：不顯示
+      }
+    }
+    return out;
+  }
+
+  private builtin(s: BuiltinSpec): BuiltinCall | null {
+    const recv = this.read(s.recv);
+    if (!recv.ok) return null;
+    let values: unknown[];
+    if (Array.isArray(recv.v)) values = recv.v;
+    else if (s.kind === 'set' && (typeof recv.v === 'string' || recv.v instanceof Set || recv.v instanceof Map)) values = [...(recv.v as Iterable<unknown>)];
+    else return null;
+    let fn: ((...a: unknown[]) => unknown) | null = null;
+    if (s.fn !== undefined) {
+      const f = this.read(s.fn);
+      if (!f.ok || typeof f.v !== 'function') return null;
+      fn = f.v as (...a: unknown[]) => unknown;
+    }
+    const FUNC: Record<BuiltinSpec['kind'], BuiltinCall['func']> = {
+      reduce: 'reduce', max: 'max', min: 'min', sort: 'sort', sorted: 'sorted', reverse: 'reversed', reversed: 'reversed',
+      some: 'any', every: 'all', join: 'join', set: 'set', map: 'map', filter: 'filter',
+    };
+    const call: BuiltinCall = { func: FUNC[s.kind], label: s.label, src: s.src };
+    if (s.elt) call.elt = s.elt;
+    if (s.var) call.var = s.var;
+    if (s.target) call.target = s.target;
+    const disp = (v: unknown) => short(v, 24);
+    const N = 16;
+    call.items = values.slice(0, N).map(disp);
+    if (values.length > N) call.more = values.length - N;
+    const order = (cmp: (a: unknown, b: unknown) => number) => values.map((_, i) => i).sort((i, j) => cmp(values[i], values[j]) || 0);
+    switch (s.kind) {
+      case 'reduce': {
+        let i = 0;
+        let acc: unknown;
+        if (s.arg !== undefined) {
+          const init = this.read(s.arg);
+          if (!init.ok) return null;
+          acc = init.v;
+        } else {
+          if (!values.length) return null;
+          acc = values[0];
+          i = 1;
+        }
+        call.init = disp(acc);
+        const running: string[] = values.slice(0, i).map(() => '');
+        for (; i < values.length; i++) {
+          acc = fn!(acc, values[i], i, values);
+          running.push(disp(acc));
+        }
+        call.running = running.slice(0, N);
+        call.result = disp(acc);
+        return call;
+      }
+      case 'max':
+      case 'min': {
+        if (!values.length) return null;
+        let pick = 0;
+        values.forEach((v, i) => {
+          if (s.kind === 'max' ? (v as number) > (values[pick] as number) : (v as number) < (values[pick] as number)) pick = i;
+        });
+        call.pick = pick;
+        call.result = disp(s.kind === 'max' ? Math.max(...(values as number[])) : Math.min(...(values as number[])));
+        return call;
+      }
+      case 'sort':
+      case 'sorted': {
+        // 沒有比較函式時，JavaScript 依字串排序（[10, 9, 1] → [1, 10, 9]）
+        const cmp = fn
+          ? (a: unknown, b: unknown) => Number(fn!(a, b))
+          : (a: unknown, b: unknown) => (a === undefined ? 1 : b === undefined ? -1 : String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0);
+        if (!fn) call.byString = true;
+        const o = order(cmp);
+        if (values.length <= N) call.order = o;
+        call.result = disp(o.map((i) => values[i]));
+        return call;
+      }
+      case 'reverse':
+      case 'reversed': {
+        const o = values.map((_, i) => values.length - 1 - i);
+        if (values.length <= N) call.order = o;
+        call.result = disp(o.map((i) => values[i]));
+        return call;
+      }
+      case 'some':
+      case 'every': {
+        const truth: boolean[] = [];
+        let stop: number | undefined;
+        for (let i = 0; i < values.length; i++) {
+          const ok = Boolean(fn!(values[i], i, values));
+          truth.push(ok);
+          if (ok === (s.kind === 'some')) {
+            stop = i;
+            break; // 短路：後面的元素不會被看
+          }
+        }
+        call.items = call.items.slice(0, truth.length);
+        call.truth = truth.slice(0, N);
+        if (stop !== undefined) call.stop = stop;
+        call.result = String(s.kind === 'some' ? stop !== undefined : stop === undefined);
+        return call;
+      }
+      case 'join': {
+        let sep = ',';
+        if (s.arg !== undefined) {
+          const a = this.read(s.arg);
+          if (!a.ok) return null;
+          sep = String(a.v);
+        }
+        call.sep = JSON.stringify(sep);
+        call.result = disp(values.join(sep));
+        return call;
+      }
+      case 'set': {
+        const seen = new Set<unknown>();
+        call.kept = values.slice(0, N).map((v) => {
+          const fresh = !seen.has(v);
+          seen.add(v);
+          return fresh;
+        });
+        for (const v of values) seen.add(v);
+        const text = `Set {${[...seen].map((v) => short(v)).join(', ')}}`;
+        call.result = text.length <= 40 ? text : `Set(${seen.size})`;
+        return call;
+      }
+      case 'map': {
+        const mapped = values.map((v, i) => fn!(v, i, values));
+        call.running = mapped.slice(0, N).map(disp);
+        call.result = disp(mapped);
+        return call;
+      }
+      case 'filter': {
+        const kept = values.map((v, i) => Boolean(fn!(v, i, values)));
+        call.kept = kept.slice(0, N);
+        call.result = disp(values.filter((_, i) => kept[i]));
+        return call;
+      }
+    }
+    return null;
   }
 }
 
