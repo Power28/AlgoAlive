@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Boxes } from 'lucide-react';
 import type { ExecutionStep } from '../types';
-import { formatPy } from '../lib/pyValue';
+import { formatValue } from '../lib/value';
 import { useT } from '../i18n';
 
 export interface DesignInfo {
@@ -44,7 +44,7 @@ export function DesignTimeline({ design, step }: { design: DesignInfo; step: Exe
 
   // 方法剛回傳、輸出還沒記進 outputs 時，先顯示這一步的回傳值
   const pending = step.event === 'return' && step.returnValue
-    ? step.returnValue.type === 'none' ? 'null' : formatPy(step.returnValue, step.heap)
+    ? step.returnValue.type === 'none' ? 'null' : formatValue(step.returnValue, step.heap)
     : undefined;
 
   return (

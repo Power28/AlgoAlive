@@ -1,14 +1,8 @@
 /**
- * 測試呼叫的輔助：從程式碼找出可以測試的函式，產生可以直接執行的範例呼叫，
+ * Python 測試呼叫的輔助：從程式碼找出可以測試的函式，產生可以直接執行的範例呼叫，
  * 並判斷目前的測試呼叫是否對得上程式碼裡的函式。
  */
-
-export interface FuncDef {
-  name: string;
-  /** 是 class Solution 的方法 */
-  method: boolean;
-  params: { name: string; annotation: string }[];
-}
+import type { FuncDef } from '../types';
 
 /** 找出最外層的函式，或 class Solution 的方法（有 Solution 時只取它的方法） */
 export function findFunctions(code: string): FuncDef[] {

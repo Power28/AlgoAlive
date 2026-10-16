@@ -113,12 +113,19 @@ npm run capture -- --url http://localhost:5173/  # 錄本機 dev server（先 np
 
 ```
 src/
-├─ runtime/
-│  ├─ tracer.py            # sys.settrace 追蹤器 + 帶型別標籤的序列化
-│  ├─ pyodide.worker.ts    # Web Worker：載入 Pyodide (CDN v0.26.2) 並執行 tracer
-│  └─ runner.ts            # 主執行緒端：Worker 生命週期、逾時重啟、狀態通知
+├─ languages/
+│  ├─ types.ts             # Language 介面：執行環境、值的格式、程式碼分析、測試呼叫的輔助
+│  ├─ index.ts             # 語言註冊表（getLanguage）；頁籤與教學範例都記錄自己的語言
+│  └─ python/
+│     ├─ index.ts          # Python 的 Language 實作
+│     ├─ tracer.py         # sys.settrace 追蹤器 + 帶型別標籤的序列化
+│     ├─ pyodide.worker.ts # Web Worker：載入 Pyodide (CDN v0.26.2) 並執行 tracer
+│     ├─ runtime.ts        # 主執行緒端：Worker 生命週期、逾時重啟、狀態通知
+│     ├─ format.ts         # Python repr 的字面值寫法（None、True、'字串'、set()…）
+│     ├─ functions.ts      # 找出 def / class Solution 的方法、產生範例測試呼叫
+│     └─ analysis.ts       # heapq 操作的 list 畫成堆積樹
 ├─ lib/
-│  ├─ pyValue.ts           # Python repr 格式化、型別判斷、2D 格子偵測
+│  ├─ value.ts             # 值的格式化（依語言的 ValueFormat）、型別判斷、2D 格子偵測
 │  ├─ cellKeys.ts          # 跨步驟追蹤 list 格子身分（讓 swap 變成移動動畫）
 │  ├─ indexing.ts          # 靜態分析 name[...] 索引寫法，決定指針屬於哪個容器
 │  ├─ graph.ts             # 物件圖 / 鄰接串列 → 節點與邊，以及 visited、queue、path 等走訪狀態
@@ -140,9 +147,9 @@ src/
 interface ExecutionStep {
   stepIndex: number;
   lineNumber: number;                   // line 事件 = 「即將執行」這一行
-  variables: Record<string, PyValue>;   // 帶型別標籤，例如 { type: 'list', items: [...] }
+  variables: Record<string, Value>;     // 帶型別標籤，例如 { type: 'list', items: [...] }
   event: 'line' | 'return' | 'exception';
-  returnValue?: PyValue;
+  returnValue?: Value;
   exception?: string;
   funcName: string;
   depth: number;                        // 遞迴深度
@@ -150,7 +157,18 @@ interface ExecutionStep {
 }
 ```
 
-`variables` 採用帶型別標籤的 `PyValue`（而非裸 JSON），以區分 `list` / `tuple` / `set`、保留 dict 的非字串 key，並安全表示 `inf`、大整數等 JSON 無法直接表達的值。
+`variables` 採用帶型別標籤的 `Value`（而非裸 JSON），以區分 `list` / `tuple` / `set`、保留 dict 的非字串 key，並安全表示 `inf`、大整數等 JSON 無法直接表達的值。
+
+### 加入其他程式語言
+
+前端的視覺化只依賴上面這份與語言無關的追蹤格式。加入新語言時，在 `src/languages/<語言>/` 實作 [`Language`](src/languages/types.ts)：
+
+- **執行環境 `runtime()`**：在 Web Worker 中執行程式並逐步記錄，輸出相同的 `TraceResult`（每一步的行號、`Value`、heap、呼叫堆疊…）
+- **`format`**：字面值的寫法（例如 `null` / `true`）
+- **程式碼分析**：`analyzeIndexing`、`analyzeHeaps`、`findFunctions` / `exampleCall` / `callNeedsHelp`（測試呼叫的建議）
+- **`blank`、`callPlaceholder`、`callFormats`**：新頁籤的範本與測試呼叫的格式說明
+
+再到 [`src/languages/index.ts`](src/languages/index.ts) 登記即可。頁籤與教學範例都有 `language` 欄位（省略時為 Python）。
 
 ### 測試呼叫的寫法
 

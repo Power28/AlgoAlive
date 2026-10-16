@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Check, CircleHelp, X } from 'lucide-react';
 import type { Condition, ConditionPart, ExecutionStep, Heap } from '../types';
-import { formatPy } from '../lib/pyValue';
+import { formatValue } from '../lib/value';
 import { useT } from '../i18n';
 import { LogicView, hasLogic } from './LogicTree';
 
@@ -35,7 +35,7 @@ export function ResultBadge({ result, size = 'md' }: { result: boolean | null | 
 function truthValue(part: ConditionPart, heap?: Heap) {
   const term = part.terms?.[0];
   if (!term?.value || term.display !== term.src) return null;
-  const text = formatPy(term.value, heap);
+  const text = formatValue(term.value, heap);
   return text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE)}…` : text;
 }
 
@@ -77,7 +77,7 @@ export function ConditionPanel({ condition, heap, line }: { condition: Condition
   const compound = !logic && condition.parts.length > 1;
   // 賦值 / 回傳中的 and / or：結果是被選中的運算元本身，不只是 True / False
   const valueContext = condition.context === 'value';
-  const valueText = valueContext && condition.value && condition.value.type !== 'bool' ? formatPy(condition.value, heap) : null;
+  const valueText = valueContext && condition.value && condition.value.type !== 'bool' ? formatValue(condition.value, heap) : null;
   return (
     <div className="rounded-lg border border-[#c084fc]/40 bg-[#c084fc]/8 px-3 py-2.5" data-condition>
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[#c084fc] uppercase">
@@ -142,7 +142,7 @@ export function lineHint(step: ExecutionStep | undefined): { text: string; tone:
     const c = step.condition;
     // 賦值 / 回傳中的 and / or：提示實際被選中的值
     if (c.context === 'value' && c.value && c.value.type !== 'bool') {
-      return { text: `${clip(c.display)} → ${clip(formatPy(c.value, step.heap), 30)}`, tone: 'calc' };
+      return { text: `${clip(c.display)} → ${clip(formatValue(c.value, step.heap), 30)}`, tone: 'calc' };
     }
     const tone: HintTone = c.result === true ? 'true' : c.result === false ? 'false' : 'unknown';
     return { text: `${clip(c.display)}${c.result === null ? '' : ` → ${c.result ? 'True' : 'False'}`}`, tone };

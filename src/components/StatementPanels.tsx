@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRightLeft, CornerUpLeft, ListPlus, LogOut } from 'lucide-react';
 import type { CompInfo, ExecutionStep, Heap, MultiAssign } from '../types';
-import { formatCell } from '../lib/pyValue';
+import { formatCell } from '../lib/value';
 import { useT } from '../i18n';
 
 export const MULTI_COLOR = '#f9a8d4';

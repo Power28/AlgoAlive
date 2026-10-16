@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import type { PyValue, SliceInfo } from '../types';
-import { formatCell, formatPy, valueKey } from '../lib/pyValue';
+import type { Value, SliceInfo } from '../types';
+import { formatCell, formatValue, valueKey } from '../lib/value';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
 import { useHeap } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
@@ -20,10 +20,10 @@ interface Props {
   name: string;
   /** 型別標籤：list / tuple / deque / str */
   kind: string;
-  items: PyValue[];
+  items: Value[];
   truncated?: number;
   keys: string[];
-  prevItems?: PyValue[];
+  prevItems?: Value[];
   pointers: Pointer[];
   /** 目前條件式正在比較的格子 */
   compared?: Set<number>;
@@ -122,7 +122,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
                   layout
                   layoutDependency={order}
                   transition={spring}
-                  title={formatPy(item, heap)}
+                  title={formatValue(item, heap)}
                   className="flex shrink-0 items-center justify-center rounded-md border font-mono font-semibold"
                   style={{
                     width: CELL,

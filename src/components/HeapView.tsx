@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import type { PyValue } from '../types';
-import { formatCell, formatPy, valueKey } from '../lib/pyValue';
+import type { Value } from '../types';
+import { formatCell, formatValue, valueKey } from '../lib/value';
 import { useHeap } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 import { useT } from '../i18n';
@@ -14,10 +14,10 @@ const spring = { type: 'spring', stiffness: 320, damping: 30 } as const;
 
 interface Props {
   name: string;
-  items: PyValue[];
+  items: Value[];
   /** 與 ArrayView 共用的格子身分 key：推入 / 取出後節點會移動到新位置 */
   keys: string[];
-  prevItems?: PyValue[];
+  prevItems?: Value[];
   /** 這一步操作影響的位置（例如 heappop 的頂端） */
   written?: Set<number>;
 }
@@ -79,7 +79,7 @@ export function HeapView({ name, items, keys, prevItems, written }: Props) {
                 initial={{ opacity: 0, scale: 0.5, x: p.x, y: p.y }}
                 animate={{ opacity: 1, scale: 1, x: p.x, y: p.y }}
                 transition={spring}
-                title={formatPy(item, heap)}
+                title={formatValue(item, heap)}
               >
                 <div
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"

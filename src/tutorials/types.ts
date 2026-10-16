@@ -1,3 +1,4 @@
+import type { LanguageId } from '../languages/types';
 import type { L } from '../i18n';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -10,6 +11,8 @@ export interface Example {
   number: number;
   title: L;
   difficulty: Difficulty;
+  /** 範例程式的語言；省略時為 Python */
+  language?: LanguageId;
   code: string;
   call: string;
   /**
