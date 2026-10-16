@@ -531,6 +531,52 @@ async function testStale(page) {
   record('the button on the notice runs the new code', rerun.stale === null && !rerun.badge ? null : `got ${JSON.stringify(rerun)}`);
 }
 
+async function testCallAssist(page) {
+  console.log('Test call assistance');
+  await page.click('[role="tab"]');
+  const input = 'input[placeholder]';
+  const original = await page.$eval(input, (e) => e.value);
+  const setCall = async (v) => {
+    await page.$eval(input, (e) => e.select());
+    if (v) await page.keyboard.type(v);
+    else await page.keyboard.press('Backspace');
+    await sleep(150);
+  };
+  const run = async () => {
+    await page.click('[data-action="visualize"]');
+    await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText) || document.querySelector('main [data-error]'), { timeout: 30_000 });
+    await sleep(200);
+  };
+  const text = (sel) => page.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() ?? null, sel);
+
+  // 直接貼 LeetCode 的範例輸入
+  await setCall('numbers = [2,7,11,15], target = 9');
+  await run();
+  const info = await text('[data-call-info]');
+  record('LeetCode example input is understood', info === 'Read as twoSum(numbers=[2, 7, 11, 15], target=9)' ? null : `got ${JSON.stringify(info)}`);
+
+  // 名稱大小寫打錯：說明 + 一鍵修正並執行
+  await setCall('TwoSum([2,7,11,15], 9)');
+  await run();
+  const hint = await text('[data-call-hint="name"]');
+  const extraSuggest = await text('[data-call-suggest]');
+  await page.click('[data-action="apply-fix"]');
+  await page.waitForFunction(() => !document.querySelector('[data-call-hint]') && /Step 1 \/ \d+/.test(document.body.innerText), { timeout: 30_000 }).catch(() => {});
+  const fixed = await page.$eval(input, (e) => e.value);
+  record('a misspelled function gets a one-click fix', /no function called TwoSum — did you mean twoSum\?/.test(hint ?? '') && extraSuggest === null && fixed === 'twoSum([2,7,11,15], 9)' ? null : `got ${JSON.stringify({ hint, extraSuggest, fixed })}`);
+
+  // 清空：建議依函式定義填入範例
+  await setCall('');
+  const suggest = await text('[data-call-suggest]');
+  await page.click('[data-call-suggest] button');
+  await sleep(150);
+  const filled = await page.$eval(input, (e) => e.value);
+  record('an empty test call suggests an example', /Fill in an example/.test(suggest ?? '') && filled === 'twoSum(numbers=[1, 2, 3, 4], target=5)' ? null : `got ${JSON.stringify({ suggest, filled })}`);
+
+  await setCall(original);
+  await run();
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -572,6 +618,7 @@ try {
   await testDesign(page);
   await testNegativeBits(page);
   await testStale(page);
+  await testCallAssist(page);
   await testDemo(page);
   await testExamples(page, expected);
 

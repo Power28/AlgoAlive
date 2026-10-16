@@ -14,6 +14,9 @@ import sys
 import types
 import collections
 import collections.abc
+import difflib
+import inspect
+import re
 
 MAX_STEPS = 500
 MAX_ITEMS = 100      # 單一容器最多序列化的元素數
@@ -1813,6 +1816,243 @@ def _design_call(call_src, ns):
     return ops, args
 
 
+# ─────────────── 測試呼叫的解讀 ───────────────
+
+class _CallHint(Exception):
+    """測試呼叫寫錯：附上結構化的提示，前端用使用者的語言說明並提供修正"""
+
+    def __init__(self, hint, message):
+        super().__init__(message)
+        self.hint = hint
+
+
+_LITERAL_NAMES = {"null", "true", "false", "None", "True", "False", "inf"}
+_LITERAL_CALLS = {"build_list", "build_tree", "build_graph", "ListNode", "TreeNode", "Node", "float"}
+_LIST_PARAMS = {"head", "l1", "l2", "list1", "list2", "headA", "headB"}
+_TREE_PARAMS = {"root", "root1", "root2", "subRoot"}
+
+
+def _literalish(node):
+    """測資的值：常數、list / dict / tuple、負號、null / true / false、build_list(...) 這類建立測資的呼叫"""
+    for n in ast.walk(node):
+        if isinstance(n, ast.Call):
+            if not (isinstance(n.func, ast.Name) and n.func.id in _LITERAL_CALLS):
+                return False
+        elif isinstance(n, ast.Name):
+            if n.id not in _LITERAL_NAMES and n.id not in _LITERAL_CALLS:
+                return False
+        elif not isinstance(n, (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set, ast.UnaryOp, ast.BinOp,
+                                ast.unaryop, ast.operator, ast.Load, ast.keyword, ast.Expression)):
+            return False
+    return True
+
+
+class _Entries:
+    """程式碼中可以當成測試入口的函式：class Solution 的方法，否則是最外層的函式"""
+
+    def __init__(self, tree, ns):
+        self.solution = ns.get("Solution") if isinstance(ns.get("Solution"), type) else None
+        self.annotations = {}  # 函式名稱 → {參數: 型別標註原文}
+        self.top = []
+        self.methods = []
+        for node in tree.body if tree is not None else []:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
+                self.top.append(node.name)
+                self._note(node)
+            elif isinstance(node, ast.ClassDef) and node.name == "Solution":
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and not item.name.startswith("_"):
+                        self.methods.append(item.name)
+                        self._note(item)
+        self.names = self.methods if self.solution is not None and self.methods else self.top
+
+    def _note(self, node):
+        self.annotations[node.name] = {
+            a.arg: ast.unparse(a.annotation) if a.annotation is not None else "" for a in node.args.args
+        }
+
+    def get(self, name, ns):
+        """(可呼叫的物件, 顯示用前綴)；找不到時 None"""
+        if self.solution is not None and name in self.methods:
+            return getattr(self.solution(), name), "Solution()."
+        value = ns.get(name)
+        if callable(value):
+            return value, ""
+        return None
+
+    def params(self, name, fn):
+        sig = inspect.signature(fn)
+        notes = self.annotations.get(name, {})
+        return [(p.name, notes.get(p.name, ""), p.default is inspect.Parameter.empty)
+                for p in sig.parameters.values() if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+
+
+def _parse_call(text):
+    """回傳 (形式, 資料)：("call", ast.Call)、("keywords", [ast.keyword])、("positional", [ast.expr])；無法辨認時 None"""
+    try:
+        expr = ast.parse(text, INPUT_FILE, "eval").body
+    except SyntaxError:
+        expr = None
+    if expr is not None:
+        if isinstance(expr, ast.Call):
+            return "call", expr
+        if isinstance(expr, ast.Tuple) and all(_literalish(e) for e in expr.elts):
+            return "positional", expr.elts
+        if isinstance(expr, (ast.List, ast.Constant, ast.Dict)) or (isinstance(expr, ast.UnaryOp) and _literalish(expr)):
+            return "positional", [expr]
+        return None
+    # LeetCode 的範例輸入一行一個（nums = [2,7,11,15] 換行 target = 9），或測資框的一行一個值
+    joined = re.sub(r"\s*\n\s*", ", ", text.strip())
+    try:
+        expr = ast.parse(joined, INPUT_FILE, "eval").body
+        if isinstance(expr, ast.Tuple) and all(_literalish(e) for e in expr.elts):
+            return "positional", expr.elts
+    except SyntaxError:
+        pass
+    try:
+        call = ast.parse(f"_({joined})", INPUT_FILE, "eval").body
+    except SyntaxError:
+        return None
+    if isinstance(call, ast.Call) and call.keywords and not call.args and all(k.arg for k in call.keywords) \
+            and all(_literalish(k.value) for k in call.keywords):
+        return "keywords", call.keywords
+    return None
+
+
+def _convert(value, annotation, param, extra, ns):
+    """依型別標註（或參數名稱）把 list 轉成鏈結串列 / 樹 / 圖；回傳 (值, 轉成什麼)"""
+    if not isinstance(value, list):
+        return value, None
+    if "ListNode" in annotation or (not annotation and param in _LIST_PARAMS):
+        pos = extra.get("pos", -1)
+        return ns["build_list"](value, pos if isinstance(pos, int) else -1), "ListNode"
+    if "TreeNode" in annotation or (not annotation and param in _TREE_PARAMS):
+        return ns["build_tree"](value), "TreeNode"
+    if re.search(r"\bNode\b", annotation) and all(isinstance(v, list) for v in value):
+        return ns["build_graph"](value), "Node"
+    return value, None
+
+
+def _short_arg(value):
+    r = repr(value)
+    return r if len(r) <= 40 else r[:39] + "…"
+
+
+def _smart_call(call_src, ns, tree):
+    """把測試呼叫解讀成 (函式, args, kwargs, 說明)；看不懂的寫法回傳 None，交給一般的 eval / exec"""
+    text = call_src.strip()
+    entries = _Entries(tree, ns)
+    if not text:
+        raise _CallHint({"kind": "empty", "funcs": entries.names[:3]}, "The test call is empty")
+    parsed = _parse_call(text)
+    if parsed is None:
+        return None
+    form, data = parsed
+
+    if form == "call":
+        func = data.func
+        name = None
+        if isinstance(func, ast.Name):
+            name = func.id
+        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call) and isinstance(func.value.func, ast.Name) \
+                and func.value.func.id == "Solution" and not func.value.args:
+            name = func.attr
+            if entries.solution is None:
+                # 程式是一般函式，測資卻寫成 Solution().xxx(...)
+                if name in entries.top:
+                    fix = text.replace(f"Solution().{name}", name, 1)
+                    raise _CallHint({"kind": "noSolution", "got": name, "fix": fix}, "There is no class Solution")
+                return None
+        else:
+            return None
+        found = entries.get(name, ns)
+        if found is None:
+            if hasattr(builtins, name) or name in ns:
+                return None  # print(...)、len(...) 之類：照一般方式執行
+            pool = entries.names + [n for n in entries.top if n not in entries.names] + \
+                [n for n, v in ns.items() if isinstance(v, type) and not n.startswith("_") and n not in ("ListNode", "TreeNode", "Node", "TrieNode")]
+            lower = {n.lower(): n for n in pool}
+            suggest = lower.get(name.lower()) or next(iter(difflib.get_close_matches(name, pool, n=1, cutoff=0.6)), None)
+            hint = {"kind": "name", "got": name, "funcs": entries.names[:5]}
+            if suggest:
+                hint["suggest"] = suggest
+                hint["fix"] = re.sub(rf"(?:Solution\(\)\.)?\b{re.escape(name)}\b", suggest, text, count=1)
+            raise _CallHint(hint, f"name '{name}' is not defined")
+        fn, prefix = found
+        if not all(_literalish(a) for a in data.args) or not all(k.arg and _literalish(k.value) for k in data.keywords):
+            if prefix:  # reverseList(...) 其實是 Solution 的方法：改寫後照一般方式執行
+                return fn, None, None, {"display": prefix + text, "inferred": True, "conversions": []}
+            return None
+        args = [eval(compile(ast.Expression(a), INPUT_FILE, "eval"), ns) for a in data.args]
+        kwargs = {k.arg: eval(compile(ast.Expression(k.value), INPUT_FILE, "eval"), ns) for k in data.keywords}
+        # reverseList(...) 自動補上 Solution().；自己寫了 Solution().reverseList(...) 就不算自動解讀
+        inferred = bool(prefix) and isinstance(func, ast.Name)
+    else:
+        if not entries.names:
+            raise _CallHint({"kind": "noFunction"}, "No function is defined")
+        values = [eval(compile(ast.Expression(e), INPUT_FILE, "eval"), ns) for e in (data if form == "positional" else [k.value for k in data])]
+        keys = [k.arg for k in data] if form == "keywords" else []
+        best = None
+        for name in entries.names:
+            fn, prefix = entries.get(name, ns)
+            params = entries.params(name, fn)
+            names = [pname for pname, _, _ in params]
+            required = [pname for pname, _, req in params if req]
+            if form == "keywords":
+                ok = set(required) <= set(keys) and set(keys) <= set(names) | {"pos"}
+            else:
+                ok = len(required) <= len(values) <= len(names)
+            if ok:
+                best = (name, fn, prefix)
+                break
+        if best is None:
+            name = entries.names[0]
+            fn, _ = entries.get(name, ns)
+            params = entries.params(name, fn)
+            raise _CallHint({
+                "kind": "args", "func": name,
+                "params": [f"{pname}: {note}" if note else pname for pname, note, _ in params],
+                "got": keys or len(values),
+            }, f"the input does not match the parameters of {name}()")
+        name, fn, prefix = best
+        args, kwargs = (values, {}) if form == "positional" else ([], dict(zip(keys, values)))
+        inferred = True
+
+    # 依型別把 list 轉成鏈結串列 / 樹 / 圖
+    params = entries.params(name, fn)
+    names = [pname for pname, _, _ in params]
+    extra = {k: v for k, v in kwargs.items() if k not in names}
+    if "pos" in extra:  # 141 / 142 的 pos：用來把鏈結串列接成環，不是函式的參數
+        kwargs.pop("pos")
+    raw_args, raw_kwargs = list(args), dict(kwargs)
+    conversions = []
+    for i, (pname, note, _) in enumerate(params):
+        if i < len(args):
+            args[i], to = _convert(args[i], note, pname, extra, ns)
+        elif pname in kwargs:
+            kwargs[pname], to = _convert(kwargs[pname], note, pname, extra, ns)
+        else:
+            continue
+        if to:
+            conversions.append({"param": pname, "to": to})
+    try:
+        inspect.signature(fn).bind(*args, **kwargs)
+    except TypeError as exc:
+        raise _CallHint({
+            "kind": "args", "func": name,
+            "params": [f"{pname}: {note}" if note else pname for pname, note, _ in params],
+            "got": list(kwargs) if kwargs and not args else len(args) + len(kwargs),
+        }, f"{name}(): {exc}")
+    # 顯示轉換前的寫法（head=[1, 2, 3]，而不是 ListNode 物件）；自動解讀時每個值都標上參數名稱
+    label_all = inferred or bool(conversions)
+    shown = [f"{names[i]}={_short_arg(v)}" if label_all and i < len(names) else _short_arg(v) for i, v in enumerate(raw_args)]
+    shown += [f"{k}={_short_arg(v)}" for k, v in raw_kwargs.items()]
+    if "pos" in extra and conversions:
+        shown.append(f"pos={_short_arg(extra['pos'])}")
+    display = f"{prefix}{name}({', '.join(shown)})"
+    return fn, args, kwargs, {"display": display, "inferred": inferred, "conversions": conversions}
+
+
 def _leet(value):
     """LeetCode 的寫法：null / true / false、字串用雙引號"""
     try:
@@ -1985,17 +2225,36 @@ def algoalive_run(code, call_src):
                     final["heap"] = {**final.get("heap", {}), **extra_heap}
                 steps.append(final)
         else:
+            # 一般的測試呼叫：先解讀（LeetCode 範例格式、Solution 的方法、自動轉成鏈結串列 / 樹…），看不懂才照原樣執行
             try:
-                call_code = compile(call_src, INPUT_FILE, "eval")
-                is_expr = True
+                user_tree = ast.parse(code)
             except SyntaxError:
-                call_code = compile(call_src, INPUT_FILE, "exec")
-                is_expr = False
-            sys.settrace(tracer)
-            try:
-                value = eval(call_code, ns) if is_expr else exec(call_code, ns)
-            finally:
-                sys.settrace(None)
+                user_tree = None
+            smart = _smart_call(call_src, ns, user_tree)
+            if smart is not None and smart[1] is not None:
+                fn, args, kwargs, info = smart
+                result["call"] = info
+                sys.settrace(tracer)
+                try:
+                    value = fn(*args, **kwargs)
+                finally:
+                    sys.settrace(None)
+            else:
+                source = call_src
+                if smart is not None:  # Solution 的方法但參數不是單純的值：補上 Solution(). 再照原樣執行
+                    result["call"] = smart[3]
+                    source = smart[3]["display"]
+                try:
+                    call_code = compile(source, INPUT_FILE, "eval")
+                    is_expr = True
+                except SyntaxError:
+                    call_code = compile(source, INPUT_FILE, "exec")
+                    is_expr = False
+                sys.settrace(tracer)
+                try:
+                    value = eval(call_code, ns) if is_expr else exec(call_code, ns)
+                finally:
+                    sys.settrace(None)
         ctx = _Ctx(registry)
         result["returnValue"] = _ser(value, ctx)
         heap = ctx.drain()
@@ -2010,6 +2269,8 @@ def algoalive_run(code, call_src):
         else:
             msg = f"{type(exc).__name__}: {exc}"
         result["error"] = {"type": type(exc).__name__, "message": msg, "line": line, "timeout": is_timeout}
+        if isinstance(exc, _CallHint):
+            result["error"].update({"type": "CallError", "message": str(exc), "line": None, "hint": exc.hint})
         if is_timeout and steps:
             last = dict(steps[-1])
             last.update({"stepIndex": len(steps), "event": "exception", "exception": msg})

@@ -289,6 +289,22 @@ export interface TraceError {
   message: string;
   line: number | null;
   timeout: boolean;
+  /** 測試呼叫寫錯（type 為 CallError）：結構化的說明與自動修正 */
+  hint?: CallHint;
+}
+
+export type CallHint =
+  | { kind: 'empty'; funcs: string[] }
+  | { kind: 'name'; got: string; funcs: string[]; suggest?: string; fix?: string }
+  | { kind: 'noSolution'; got: string; fix: string }
+  | { kind: 'noFunction' }
+  | { kind: 'args'; func: string; params: string[]; got: number | string[] };
+
+/** 測試呼叫被解讀成什麼：LeetCode 的範例格式、自動補上 Solution().、list 轉成鏈結串列 / 樹… */
+export interface CallInfo {
+  display: string;
+  inferred: boolean;
+  conversions: { param: string; to: 'ListNode' | 'TreeNode' | 'Node' }[];
 }
 
 export interface TraceResult {
@@ -299,4 +315,5 @@ export interface TraceResult {
   stdout: string;
   /** 測試呼叫是 LeetCode 設計題的兩個陣列時：每個操作的寫法 */
   design?: { ops: string[]; calls: string[] };
+  call?: CallInfo;
 }

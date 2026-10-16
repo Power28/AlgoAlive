@@ -15,6 +15,7 @@ import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
 import { designStarts } from './components/DesignTimeline';
+import { CallAssist, CallHintBox } from './components/CallAssist';
 import { lineHint } from './components/ConditionPanel';
 import { runner, type RuntimeStatus } from './runtime/runner';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
@@ -83,8 +84,9 @@ export default function App() {
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
   const tutorial = getTutorial(active.tutorialId);
 
-  const visualize = useCallback(async () => {
-    const { id, code, call } = active;
+  /** 以指定的測資執行（一鍵修正測試呼叫時，新的測資還沒反映到 active） */
+  const runWith = useCallback(async (call: string) => {
+    const { id, code } = active;
     setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, error: null } }));
     try {
       const result = await runner.run(code, call);
@@ -93,6 +95,7 @@ export default function App() {
       setRuns((r) => ({ ...r, [id]: { trace: null, code, call, error: err instanceof Error ? err.message : String(err) } }));
     }
   }, [active]);
+  const visualize = useCallback(() => runWith(active.call), [runWith, active.call]);
 
   const editActive = (patch: { code?: string; call?: string }) => {
     update(active.id, patch);
@@ -238,7 +241,7 @@ export default function App() {
                   onKeyDown={(e) => e.key === 'Enter' && visualize()}
                   spellCheck={false}
                   className="min-w-0 flex-1 rounded-md border border-ink-600 bg-ink-900 px-3 py-2 font-mono text-sm outline-none focus:border-brand"
-                  placeholder="twoSum([2, 7, 11, 15], 9)"
+                  placeholder="nums = [2,7,11,15], target = 9"
                 />
                 <button
                   onClick={visualize}
@@ -252,6 +255,13 @@ export default function App() {
                   {t('visualize')}
                 </button>
               </div>
+              <CallAssist
+                code={active.code}
+                call={active.call}
+                info={stale ? undefined : trace?.call}
+                hasFix={!stale && !!error?.hint && 'fix' in error.hint && !!error.hint.fix}
+                onFill={(c) => editActive({ call: c })}
+              />
             </div>
           </div>
         </section>
@@ -307,7 +317,18 @@ export default function App() {
             style={{ opacity: stale ? 0.45 : 1, filter: stale ? 'grayscale(0.85)' : 'none' }}
           >
             {run?.error && <ErrorBox message={run.error} />}
-            {error && <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />}
+            {error &&
+              (error.hint ? (
+                <CallHintBox
+                  hint={error.hint}
+                  onFix={(fix) => {
+                    editActive({ call: fix });
+                    runWith(fix);
+                  }}
+                />
+              ) : (
+                <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />
+              ))}
             {step ? (
               <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
                 slotHeight={slotHeight}

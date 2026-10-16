@@ -152,9 +152,23 @@ interface ExecutionStep {
 
 `variables` 採用帶型別標籤的 `PyValue`（而非裸 JSON），以區分 `list` / `tuple` / `set`、保留 dict 的非字串 key，並安全表示 `inf`、大整數等 JSON 無法直接表達的值。
 
+### 測試呼叫的寫法
+
+以下幾種寫法都可以，不熟 Python 呼叫語法也能直接貼 LeetCode 的測資：
+
+| 寫法 | 說明 |
+|---|---|
+| `twoSum([2, 7, 11, 15], 9)` | 直接呼叫函式 |
+| `nums = [2,7,11,15], target = 9` | 直接貼上 LeetCode 範例的「輸入」，依參數名稱對到函式 |
+| `[2,7,11,15]` 換行 `9` | 一行一個值，和 LeetCode 測資框的格式相同 |
+| `head = [1,2,3]`、`root = [3,9,20,null,null,15,7]` | 參數型別是 `ListNode` / `TreeNode`（或名稱是 `head` / `root`）時，list 自動轉成鏈結串列 / 二元樹；141 題的 `pos` 會把串列接成環 |
+| `["MinStack","push"]` 換行 `[[],[1]]` | 設計類題目（見下方） |
+
+自動解讀時，輸入框下方會顯示「解讀為 `twoSum(nums=[2, 7, 11, 15], target=9)`」與自動轉換了哪些參數。測資空白或對不上程式裡的函式時，會依函式定義提供「填入範例」按鈕；函式名稱打錯、`class Solution` 寫錯、參數數量不對時，右邊會用中文說明哪裡不對，能自動修正時提供「改成 … 並執行」按鈕。
+
 ### LeetCode `class Solution` 寫法
 
-也可以直接貼 `class Solution:` 的寫法，測試呼叫改成 `Solution().twoSum([2, 7, 11, 15], 9)` 即可（`self` 會自動隱藏）。
+也可以直接貼 `class Solution:` 的寫法，測試呼叫寫 `twoSum([2, 7, 11, 15], 9)` 或 `Solution().twoSum([2, 7, 11, 15], 9)` 都可以（會自動找 `Solution` 的方法，`self` 會自動隱藏）。
 
 ### 設計類題目（MinStack、LRU Cache…）
 

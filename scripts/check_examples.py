@@ -570,6 +570,39 @@ def tracer_cases():
         if calcs[2]["stages"][0] != "-6 & -(-6)" or calcs[5]["stages"][0] != "5 - (-6)":
             return f"negative values must be parenthesised: {calcs[2]['stages']} / {calcs[5]['stages']}"
 
+    def smart_test_calls():
+        two = "def twoSum(nums, target):\n    return [nums[0], target]\n"
+        rev = "class Solution:\n    def reverseList(self, head: Optional[ListNode]) -> Optional[ListNode]:\n        return head\n"
+        cyc = "def hasCycle(head: Optional[ListNode]) -> bool:\n    return head.next.next.next.next is head.next\n"
+        ok_cases = [
+            (two, "nums = [2,7,11,15], target = 9", "[2, 9]", "twoSum(nums=[2, 7, 11, 15], target=9)"),
+            (two, "nums = [2,7,11,15]\ntarget = 9", "[2, 9]", "twoSum(nums=[2, 7, 11, 15], target=9)"),
+            (two, "[2,7,11,15]\n9", "[2, 9]", "twoSum(nums=[2, 7, 11, 15], target=9)"),
+            (two, "twoSum([2, 7], 9)", "[2, 9]", "twoSum([2, 7], 9)"),
+            (rev, "reverseList([1,2,3])", "1 → 2 → 3", "Solution().reverseList(head=[1, 2, 3])"),
+            (rev, "head = [1,2,3]", "1 → 2 → 3", "Solution().reverseList(head=[1, 2, 3])"),
+            (cyc, "head = [3,2,0,-4], pos = 1", "True", "hasCycle(head=[3, 2, 0, -4], pos=1)"),
+        ]
+        for code, call, want, display in ok_cases:
+            r = run(code, call)
+            if r.get("error") or fmt(r["returnValue"], r.get("returnHeap")) != want or r.get("call", {}).get("display") != display:
+                return f"{call!r}: expected {want} via {display}, got {r.get('error') or fmt(r['returnValue'], r.get('returnHeap'))} / {r.get('call')}"
+        hint_cases = [
+            (two, "twosum([2,7,11,15], 9)", {"kind": "name", "suggest": "twoSum", "fix": "twoSum([2,7,11,15], 9)"}),
+            (two, "twoSum([2,7,11,15])", {"kind": "args", "func": "twoSum", "got": 1}),
+            (two, "Solution().twoSum([1], 2)", {"kind": "noSolution", "fix": "twoSum([1], 2)"}),
+            (two, "foo = 1, bar = 2", {"kind": "args", "got": ["foo", "bar"]}),
+            (two, "  ", {"kind": "empty"}),
+        ]
+        for code, call, want in hint_cases:
+            hint = (run(code, call).get("error") or {}).get("hint") or {}
+            if any(hint.get(k) != v for k, v in want.items()):
+                return f"{call!r}: expected hint {want}, got {hint}"
+        # 不是單純的值（例如多行程式）照原本的方式執行
+        r = run(two, "x = twoSum([5], 1)\nprint(x)")
+        if r.get("error") or r["stdout"] != "[5, 1]\n":
+            return f"plain statements should still run: {r.get('error')} / {r['stdout']!r}"
+
     return [
         ("infinite loop stops at MAX_STEPS", infinite_loop),
         ("syntax error reports line", syntax_error),
@@ -605,6 +638,7 @@ def tracer_cases():
         ("built-in cards never consume iterators or run skipped calls", builtin_calls_are_safe),
         ("design problems run from LeetCode's two arrays", design_problem),
         ("negative numbers get bit tables and parenthesised substitution", negative_bits),
+        ("test calls accept LeetCode input and give friendly hints", smart_test_calls),
     ]
 
 
