@@ -152,6 +152,18 @@ check('a higher step limit can be requested (up to 5000)', () => {
   if (!capped.error?.timeout || capped.steps.length !== 5001) return `capped at ${capped.steps.length} steps`;
 });
 
+check('large arrays send the cells around every pointer', () => {
+  const code = 'function search(nums, target) {\n  let lo = 0;\n  let hi = nums.length - 1;\n  while (lo <= hi) {\n    const mid = Math.floor((lo + hi) / 2);\n    if (nums[mid] === target) return mid;\n    if (nums[mid] < target) lo = mid + 1;\n    else hi = mid - 1;\n  }\n  return -1;\n}';
+  const r = traceJs(code, 'search(Array.from({ length: 10000 }, (_, i) => i * 3), 24000)');
+  if (int(r.returnValue) !== 8000) return `returned ${JSON.stringify(r.returnValue)}`;
+  for (const s of r.steps) {
+    const nums = s.variables.nums;
+    const mid = s.variables.mid?.value;
+    if (nums?.length !== 10000 || nums.items.length > 150) return `nums should be sent sparsely: ${nums?.length} / ${nums?.items.length}`;
+    if (mid !== undefined && !nums.index.includes(mid)) return `the cell at mid = ${mid} should be sent`;
+  }
+});
+
 check('syntax and runtime errors report the line', () => {
   const syntax = traceJs('function f() {\n  return 1 +;\n}', 'f()');
   if (syntax.error?.type !== 'SyntaxError' || syntax.error.line !== 2) return `syntax ${JSON.stringify(syntax.error)}`;

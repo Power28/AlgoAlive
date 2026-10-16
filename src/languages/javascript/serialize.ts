@@ -8,6 +8,23 @@ const MAX_ITEMS = 100;
 const MAX_DEPTH = 5;
 const MAX_STR = 200;
 const MAX_NODES = 120;
+// 超過 MAX_ITEMS 的陣列：開頭、結尾，以及每個指針（整數變數）附近的格子（與 Python 追蹤器相同）
+const SPARSE_HEAD = 10;
+const SPARSE_TAIL = 5;
+const SPARSE_AROUND = 4;
+const SPARSE_MAX = 150;
+
+/** 大陣列要送出的位置（由小到大，最多 SPARSE_MAX 格） */
+export function sparseIndexes(n: number, focus: Iterable<number>): number[] {
+  const keep = new Set<number>();
+  for (let i = 0; i < Math.min(SPARSE_HEAD, n); i++) keep.add(i);
+  for (let i = Math.max(0, n - SPARSE_TAIL); i < n; i++) keep.add(i);
+  for (const f of [...focus].sort((a, b) => a - b)) {
+    for (let i = f - SPARSE_AROUND; i <= f + SPARSE_AROUND; i++) if (i >= 0 && i < n) keep.add(i);
+    if (keep.size >= SPARSE_MAX) break;
+  }
+  return [...keep].sort((a, b) => a - b).slice(0, SPARSE_MAX);
+}
 
 
 export const isNodeObject = (v: object) => {
@@ -30,6 +47,8 @@ export class Registry {
 
 export class Ctx {
   heap: Record<string, Heap[string] | null> = {};
+  /** 這一步的整數變數：大陣列只送出這些位置（可能是指針）附近的格子 */
+  focus = new Set<number>();
   private queue: [string, object][] = [];
   private registry: Registry;
   constructor(registry: Registry) {
@@ -81,7 +100,13 @@ export function ser(v: unknown, ctx: Ctx | null, depth = 0, seen: Set<object> = 
   const next = new Set(seen).add(o);
   const items = (xs: unknown[]) => xs.slice(0, MAX_ITEMS).map((x) => ser(x, ctx, depth + 1, next));
   const trunc = (n: number) => (n > MAX_ITEMS ? { truncated: n - MAX_ITEMS } : {});
-  if (Array.isArray(o)) return { type: 'list', items: items(o), ...trunc(o.length) };
+  if (Array.isArray(o)) {
+    if (o.length > MAX_ITEMS && depth === 0 && ctx) {
+      const keep = sparseIndexes(o.length, ctx.focus);
+      return { type: 'list', items: keep.map((i) => ser(o[i], ctx, depth + 1, next)), index: keep, length: o.length };
+    }
+    return { type: 'list', items: items(o), ...trunc(o.length) };
+  }
   if (o instanceof Set) {
     const xs = [...o];
     return { type: 'set', items: items(xs), ...trunc(xs.length) };

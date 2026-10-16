@@ -70,8 +70,19 @@ export function fmt(v, heap = {}) {
       return typeof v.value === 'string' ? { inf: 'Infinity', '-inf': '-Infinity', nan: 'NaN' }[v.value] : String(v.value);
     case 'str':
       return JSON.stringify(v.value);
-    case 'list':
-      return `[${v.items.map(f).join(', ')}]`;
+    case 'list': {
+      if (!v.index) return `[${v.items.map(f).join(', ')}]`;
+      // 大陣列只送出部分格子：省略的區段寫成 …（與前端相同）
+      const parts = [];
+      let prev = -1;
+      v.index.forEach((r, k) => {
+        if (r > prev + 1) parts.push('…');
+        parts.push(f(v.items[k]));
+        prev = r;
+      });
+      if (prev < v.length - 1) parts.push('…');
+      return `[${parts.join(', ')}]`;
+    }
     case 'set':
       return `Set {${v.items.map(f).join(', ')}}`;
     case 'dict':
