@@ -1,5 +1,7 @@
 import { LayoutGroup, motion } from 'framer-motion';
+import { useValueFormat } from '../lib/heapContext';
 import type { Heap } from '../types';
+import type { ValueFormat } from '../languages/types';
 import { formatCell, formatValue, nodeKind, refTarget, valueKey } from '../lib/value';
 import { useT } from '../i18n';
 import { markOutline } from '../lib/stepMarks';
@@ -105,6 +107,7 @@ function buildChains(heap: Heap): Chain[] {
 }
 
 export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Props) {
+  const fmt = useValueFormat();
   const t = useT();
   const chains = buildChains(heap);
   if (!chains.length) return null;
@@ -129,11 +132,11 @@ export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Prop
                   <motion.div key={id} layoutId={`ll-${id}`} layoutDependency={signature} transition={spring} className="flex items-start">
                     <div className="flex flex-col items-center">
                       <div
-                        title={formatValue(val ?? { type: 'none' }, heap)}
+                        title={formatValue(val ?? { type: 'none' }, heap, fmt)}
                         className="flex h-11 min-w-11 items-center justify-center rounded-lg border-2 px-2 font-mono text-[15px] font-semibold transition-colors duration-300"
                         style={{ ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id)), ...markOutline(!!compared?.has(id)) }}
                       >
-                        {val ? formatCell(val, heap) : '·'}
+                        {val ? formatCell(val, heap, fmt) : '·'}
                       </div>
                       <Labels labels={nodeLabels} trail={trail?.get(id)} />
                     </div>
@@ -159,27 +162,28 @@ export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Prop
 }
 
 function ChainEnd({ chain, heap, nextChanged }: { chain: Chain; heap: Heap; nextChanged: boolean }) {
+  const fmt = useValueFormat();
   const base = 'mt-1 flex h-9 items-center rounded-md border border-dashed px-2 font-mono text-xs';
   const color = nextChanged ? '#ffa116' : '#8a8a8a';
   switch (chain.end.kind) {
     case 'none':
       return (
         <span className="mx-1 mt-2.5 flex items-center gap-1 font-mono text-lg leading-none" style={{ color: nextChanged ? '#ffa116' : '#6b6b6b' }}>
-          → <span className="text-xs text-ink-400">None</span>
+          → <span className="text-xs text-ink-400">{fmt.none}</span>
         </span>
       );
     case 'cycle': {
       const target = chain.ids[chain.end.index];
       return (
         <span className={base} style={{ borderColor: '#ef4743', color: '#ef4743' }} title="cycle">
-          ↺ {formatCell(heap[target].fields.val ?? { type: 'none' }, heap)} (#{chain.end.index})
+          ↺ {formatCell(heap[target].fields.val ?? { type: 'none' }, heap, fmt)} (#{chain.end.index})
         </span>
       );
     }
     case 'merge':
       return (
         <span className={base} style={{ borderColor: color, color }}>
-          ⤷ {formatCell(heap[chain.end.id].fields.val ?? { type: 'none' }, heap)}
+          ⤷ {formatCell(heap[chain.end.id].fields.val ?? { type: 'none' }, heap, fmt)}
         </span>
       );
     default:
@@ -239,6 +243,7 @@ function layoutTrees(heap: Heap): { placed: Placed[]; width: number; height: num
 }
 
 export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
+  const fmt = useValueFormat();
   const t = useT();
   const { placed, width, height } = layoutTrees(heap);
   if (!placed.length) return null;
@@ -285,11 +290,11 @@ export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
                 transition={spring}
               >
                 <div
-                  title={formatValue(val ?? { type: 'none' }, heap)}
+                  title={formatValue(val ?? { type: 'none' }, heap, fmt)}
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"
                   style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)), ...markOutline(!!compared?.has(p.id)) }}
                 >
-                  {val ? formatCell(val, heap) : '·'}
+                  {val ? formatCell(val, heap, fmt) : '·'}
                 </div>
                 <div className="relative z-10">
                   <Labels labels={nodeLabels} trail={trail?.get(p.id)} />
@@ -322,20 +327,21 @@ function isWordEnd(fields: Heap[string]['fields']): boolean {
 }
 
 /** 子節點：children dict 中 (字元, 節點 id)，依字元排序 */
-function trieChildren(heap: Heap, id: string): [string, string][] {
+function trieChildren(heap: Heap, id: string, fmt: ValueFormat): [string, string][] {
   const obj = heap[id];
   for (const v of Object.values(obj.fields)) {
     if (v.type !== 'dict') continue;
-    const kids = v.entries.flatMap(([k, x]) => (x.type === 'ref' && heap[x.id] && nodeKind(heap[x.id]) === 'trie' ? [[formatCell(k, heap), x.id] as [string, string]] : []));
+    const kids = v.entries.flatMap(([k, x]) => (x.type === 'ref' && heap[x.id] && nodeKind(heap[x.id]) === 'trie' ? [[formatCell(k, heap, fmt), x.id] as [string, string]] : []));
     if (kids.length || v.entries.length === 0) return kids.sort((a, b) => a[0].localeCompare(b[0]));
   }
   return [];
 }
 
 export function TrieView({ heap, prevHeap, labels }: Props) {
+  const fmt = useValueFormat();
   const t = useT();
   const ids = Object.keys(heap).filter((id) => nodeKind(heap[id]) === 'trie');
-  const isChild = new Set(ids.flatMap((id) => trieChildren(heap, id).map(([, c]) => c)));
+  const isChild = new Set(ids.flatMap((id) => trieChildren(heap, id, fmt).map(([, c]) => c)));
   const roots = ids.filter((id) => !isChild.has(id)).sort((a, b) => idNum(a) - idNum(b));
   const placed: { id: string; x: number; y: number; parent?: string; edge?: string }[] = [];
   const seen = new Set<string>();
@@ -346,7 +352,7 @@ export function TrieView({ heap, prevHeap, labels }: Props) {
     if (seen.has(id)) return col;
     seen.add(id);
     maxDepth = Math.max(maxDepth, depth);
-    const kids = trieChildren(heap, id).filter(([, c]) => !seen.has(c));
+    const kids = trieChildren(heap, id, fmt).filter(([, c]) => !seen.has(c));
     let x: number;
     if (!kids.length) x = col++;
     else {

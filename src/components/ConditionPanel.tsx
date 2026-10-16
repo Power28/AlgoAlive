@@ -1,7 +1,10 @@
 import { motion } from 'framer-motion';
+import { useValueFormat } from '../lib/heapContext';
 import { Check, CircleHelp, X } from 'lucide-react';
 import type { Condition, ConditionPart, ExecutionStep, Heap } from '../types';
 import { formatValue } from '../lib/value';
+import type { ValueFormat } from '../languages/types';
+import { pythonFormat } from '../languages/python/format';
 import { useT } from '../i18n';
 import { LogicView, hasLogic } from './LogicTree';
 
@@ -32,14 +35,15 @@ export function ResultBadge({ result, size = 'md' }: { result: boolean | null | 
 }
 
 /** truth 項目：容器沒有短的顯示值時，補上實際內容，例如 stack = [] */
-function truthValue(part: ConditionPart, heap?: Heap) {
+function truthValue(part: ConditionPart, heap: Heap | undefined, fmt: ValueFormat) {
   const term = part.terms?.[0];
   if (!term?.value || term.display !== term.src) return null;
-  const text = formatValue(term.value, heap);
+  const text = formatValue(term.value, heap, fmt);
   return text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE)}…` : text;
 }
 
 function Part({ part, heap, delay }: { part: ConditionPart; heap?: Heap; delay: number }) {
+  const fmt = useValueFormat();
   const t = useT();
   if (part.skipped) {
     return (
@@ -49,7 +53,7 @@ function Part({ part, heap, delay }: { part: ConditionPart; heap?: Heap; delay: 
       </div>
     );
   }
-  const extra = part.kind === 'truth' ? truthValue(part, heap) : null;
+  const extra = part.kind === 'truth' ? truthValue(part, heap, fmt) : null;
   return (
     <motion.div
       className="flex flex-wrap items-center gap-2"
@@ -72,12 +76,13 @@ function Part({ part, heap, delay }: { part: ConditionPart; heap?: Heap; delay: 
 
 /** 視覺化面板上方的「條件判斷」卡片：代入數值後的比較，以及 and / or 的短路過程 */
 export function ConditionPanel({ condition, heap, line }: { condition: Condition; heap?: Heap; line: number }) {
+  const fmt = useValueFormat();
   const t = useT();
   const logic = hasLogic(condition.tree);
   const compound = !logic && condition.parts.length > 1;
   // 賦值 / 回傳中的 and / or：結果是被選中的運算元本身，不只是 True / False
   const valueContext = condition.context === 'value';
-  const valueText = valueContext && condition.value && condition.value.type !== 'bool' ? formatValue(condition.value, heap) : null;
+  const valueText = valueContext && condition.value && condition.value.type !== 'bool' ? formatValue(condition.value, heap, fmt) : null;
   return (
     <div className="rounded-lg border border-[#c084fc]/40 bg-[#c084fc]/8 px-3 py-2.5" data-condition>
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[#c084fc] uppercase">
@@ -129,7 +134,7 @@ export function ConditionPanel({ condition, heap, line }: { condition: Condition
 /** 程式碼行尾的提示：條件式顯示代入後的真假，計算顯示化簡結果 */
 export type HintTone = 'true' | 'false' | 'unknown' | 'calc';
 
-export function lineHint(step: ExecutionStep | undefined): { text: string; tone: HintTone } | undefined {
+export function lineHint(step: ExecutionStep | undefined, fmt: ValueFormat = pythonFormat): { text: string; tone: HintTone } | undefined {
   if (!step) return undefined;
   const clip = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n)}…` : s);
   if (step.event === 'exception' && step.exc) return { text: `✗ ${clip(`${step.exc.type}: ${step.exc.message}`)}`, tone: 'false' };
@@ -142,10 +147,10 @@ export function lineHint(step: ExecutionStep | undefined): { text: string; tone:
     const c = step.condition;
     // 賦值 / 回傳中的 and / or：提示實際被選中的值
     if (c.context === 'value' && c.value && c.value.type !== 'bool') {
-      return { text: `${clip(c.display)} → ${clip(formatValue(c.value, step.heap), 30)}`, tone: 'calc' };
+      return { text: `${clip(c.display)} → ${clip(formatValue(c.value, step.heap, fmt), 30)}`, tone: 'calc' };
     }
     const tone: HintTone = c.result === true ? 'true' : c.result === false ? 'false' : 'unknown';
-    return { text: `${clip(c.display)}${c.result === null ? '' : ` → ${c.result ? 'True' : 'False'}`}`, tone };
+    return { text: `${clip(c.display)}${c.result === null ? '' : ` → ${fmt.bool(c.result)}`}`, tone };
   }
   if (step.calc) {
     const { stages } = step.calc;

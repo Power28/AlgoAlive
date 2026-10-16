@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { CornerDownLeft, TriangleAlert } from 'lucide-react';
 import type { ExecutionStep, Value, SequenceValue } from '../types';
 import { charItems, formatValue, intValue, isDict, isGrid, isSequence, isSet, nodeKind } from '../lib/value';
-import { HeapContext } from '../lib/heapContext';
+import { HeapContext, ValueFormatContext } from '../lib/heapContext';
 import { isPointerName, pointerColor, pointersFor } from '../lib/pointers';
 import type { IndexMap } from '../lib/indexing';
 import { useT } from '../i18n';
@@ -19,6 +19,8 @@ import { CompPanel, JumpPanel, MultiPanel } from './StatementPanels';
 import { ExcPanel, TryPanel } from './TryPanels';
 import { BuiltinPanel } from './BuiltinPanel';
 import { DesignTimeline, type DesignInfo } from './DesignTimeline';
+import type { ValueFormat } from '../languages/types';
+import { pythonFormat } from '../languages/python/format';
 import { HeapView } from './HeapView';
 import { RecursionTree } from './RecursionTree';
 import type { CallTree } from '../lib/callTree';
@@ -44,12 +46,15 @@ interface Props {
   callTree?: { tree: CallTree; index: number; onSeek?: (step: number) => void };
   /** 設計類題目的操作順序 */
   design?: DesignInfo;
+  /** 這份追蹤結果所屬語言的值格式（None / null…）；省略時為 Python */
+  format?: ValueFormat;
 }
 
 const MAX_CHAR_CELLS = 60;
 const GRID_MARK_COLORS = ['#ffa116', '#0a84ff', '#2cbb5d', '#b07cff'];
 
-export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slotHeight, context, heapNames, callTree, design }: Props) {
+export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slotHeight, context, heapNames, callTree, design, format }: Props) {
+  const fmt = format ?? pythonFormat;
   const t = useT();
   // 只有同一個 frame 的前一步才拿來做「變化」比對
   const sameFrame = prev && prev.depth === step.depth && prev.funcName === step.funcName;
@@ -186,7 +191,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
           <span className="text-ink-300">
             {design && (step.design?.index ?? 0) >= design.calls.length ? t('designOutput') : t('returned', { f: step.funcName })}
           </span>
-          <code className="font-semibold" data-return>{formatValue(returned, heap)}</code>
+          <code className="font-semibold" data-return>{formatValue(returned, heap, fmt)}</code>
         </Banner>
       )}
       {step.event === 'exception' && step.exc && <ExcPanel key={`exc-${step.stepIndex}`} exc={step.exc} line={step.lineNumber} func={step.funcName} />}
@@ -200,6 +205,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
 
   return (
     <HeapContext.Provider value={heap}>
+    <ValueFormatContext.Provider value={fmt}>
     <div className="flex flex-col gap-6">
       {design && <DesignTimeline design={design} step={step} />}
       {context && (
@@ -270,6 +276,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
 
       {entries.length === 0 && step.event === 'line' && <p className="text-sm text-ink-400">{t('noLocals')}</p>}
     </div>
+    </ValueFormatContext.Provider>
     </HeapContext.Provider>
   );
 }

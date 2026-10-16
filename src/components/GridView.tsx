@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import type { Value, SequenceValue } from '../types';
 import { formatCell, formatValue, valueKey } from '../lib/value';
 import { Header, STR_COLOR } from './ArrayView';
-import { useHeap } from '../lib/heapContext';
+import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 
 const CELL = 40;
@@ -36,6 +36,7 @@ interface Props {
 }
 
 export function GridView({ name, value, prev, marks, compared, written, keys }: Props) {
+  const fmt = useValueFormat();
   const heap = useHeap();
   const rows = value.items as SequenceValue[];
   const prevRows = prev?.type === 'list' ? (prev.items as SequenceValue[]) : undefined;
@@ -77,7 +78,7 @@ export function GridView({ name, value, prev, marks, compared, written, keys }: 
               const prevCell = prevRows?.[r]?.items?.[c];
               const changed = prevRows !== undefined && valueKey(prevCell) !== valueKey(cell);
               const mark = markAt.get(`${r},${c}`);
-              const text = formatCell(cell, heap);
+              const text = formatCell(cell, heap, fmt);
               const x = ROW_LABEL + c * STEP;
               const y = COL_LABEL + r * STEP;
               const key = keys?.[r]?.[c] ?? `${r}:${c}`;
@@ -85,7 +86,7 @@ export function GridView({ name, value, prev, marks, compared, written, keys }: 
                 <motion.div
                   key={key}
                   data-cell={key}
-                  title={formatValue(cell, heap)}
+                  title={formatValue(cell, heap, fmt)}
                   className="absolute top-0 left-0 flex items-center justify-center rounded-md border font-semibold"
                   initial={{ opacity: 0, scale: 0.6, x, y }}
                   animate={{ opacity: 1, scale: 1, x, y, backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a' }}

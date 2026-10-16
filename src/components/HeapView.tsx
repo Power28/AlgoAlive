@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import type { Value } from '../types';
 import { formatCell, formatValue, valueKey } from '../lib/value';
-import { useHeap } from '../lib/heapContext';
+import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 import { useT } from '../i18n';
 import { Header } from './ArrayView';
@@ -24,12 +24,13 @@ interface Props {
 
 /** 堆積的樹狀圖：list 的第 i 格是節點，子節點在 2i + 1、2i + 2 */
 export function HeapView({ name, items, keys, prevItems, written }: Props) {
+  const fmt = useValueFormat();
   const t = useT();
   const heap = useHeap();
   const shown = items.slice(0, MAX_NODES);
   if (!shown.length) return null;
 
-  const texts = shown.map((it) => formatCell(it, heap));
+  const texts = shown.map((it) => formatCell(it, heap, fmt));
   const node = Math.max(MIN_NODE, ...texts.map((s) => s.length * 8 + 16));
   const levels = Math.floor(Math.log2(shown.length)) + 1;
   // 最底層每個節點佔一格，整棵樹的寬度由最底層決定
@@ -79,7 +80,7 @@ export function HeapView({ name, items, keys, prevItems, written }: Props) {
                 initial={{ opacity: 0, scale: 0.5, x: p.x, y: p.y }}
                 animate={{ opacity: 1, scale: 1, x: p.x, y: p.y }}
                 transition={spring}
-                title={formatValue(item, heap)}
+                title={formatValue(item, heap, fmt)}
               >
                 <div
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"

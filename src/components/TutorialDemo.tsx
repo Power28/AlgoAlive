@@ -88,16 +88,16 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
   const context = useMemo(() => contextInfo(steps), [steps]);
   const heapNames = useMemo(() => language.analyzeHeaps(example.code), [language, example.code]);
   const callTree = useMemo(() => {
-    const tree = buildCallTree(steps);
+    const tree = buildCallTree(steps, language.format);
     if (trace?.design && !hasRecursion(tree)) return null;
     return showCallTree(tree) ? tree : null;
-  }, [steps, trace?.design]);
+  }, [steps, trace?.design, language]);
   const designCalls = trace?.design?.calls;
   const starts = useMemo(() => (designCalls ? designStarts(steps, designCalls.length) : []), [steps, designCalls]);
   const step = steps[index];
   const prev = index > 0 ? steps[index - 1] : undefined;
   const lines = example.code.replace(/\n$/, '').split('\n');
-  const hint = lineHint(step);
+  const hint = lineHint(step, language.format);
 
   return (
     <div ref={rootRef} className="@container mt-5 overflow-hidden rounded-xl border border-ink-700 bg-ink-900" data-demo={example.id}>
@@ -167,6 +167,7 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
               <Visualizer step={step} prev={prev} next={steps[index + 1]} cellKeys={cellKeys[index] ?? {}} gridKeys={gridKeys[index]} indexMap={indexMap}
                 slotHeight={slotHeight}
                 heapNames={heapNames}
+                format={language.format}
                 design={
                   designCalls
                     ? {

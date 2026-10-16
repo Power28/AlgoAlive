@@ -1,3 +1,4 @@
+import type { ValueFormat } from '../languages/types';
 import type { ExecutionStep } from '../types';
 import { formatValue } from './value';
 
@@ -41,7 +42,7 @@ function callLabel(func: string, args: [string, string][]): string {
  * 由每一步的呼叫堆疊建出整棵呼叫樹（遞迴樹）。
  * 進入新呼叫的步驟（entered）新增節點；回傳步驟記下回傳值；堆疊變淺但沒有回傳事件的，是因例外而結束。
  */
-export function buildCallTree(steps: ExecutionStep[]): CallTree {
+export function buildCallTree(steps: ExecutionStep[], format?: ValueFormat): CallTree {
   const nodes: CallNode[] = [];
   let stack: number[] = [];
   const stackIds: number[][] = [];
@@ -75,7 +76,7 @@ export function buildCallTree(steps: ExecutionStep[]): CallTree {
     if (step.event === 'return' && stack.length) {
       const node = nodes[stack[stack.length - 1]];
       node.endStep = i;
-      node.returned = step.returnValue ? clip(formatValue(step.returnValue, step.heap), 14) : undefined;
+      node.returned = step.returnValue ? clip(formatValue(step.returnValue, step.heap, format), 14) : undefined;
     }
     // 存副本：之後的 pop() 會修改 stack，不能讓前面步驟的紀錄跟著變
     stackIds.push([...stack]);

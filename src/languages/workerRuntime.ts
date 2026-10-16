@@ -1,22 +1,37 @@
-import type { TraceResult } from '../../types';
-import type { LanguageRuntime, RunOptions, RuntimeStatus } from '../types';
-import type { WorkerRequest, WorkerResponse } from './pyodide.worker';
+import type { TraceResult } from '../types';
+import type { LanguageRuntime, RunOptions, RuntimeStatus } from './types';
+
+/** 主執行緒與各語言 Worker 之間的訊息格式 */
+export type WorkerRequest = { type: 'run'; id: number; code: string; call: string };
+export type WorkerResponse =
+  | { type: 'ready' }
+  | { type: 'init-error'; message: string }
+  | { type: 'result'; id: number; json: string }
+  | { type: 'run-error'; id: number; message: string };
 
 /** 單次執行的牆鐘時間上限；超過就砍掉 Worker 重建（MAX_STEPS 擋不住的單行超大運算）。 */
 const RUN_TIMEOUT_MS = 10_000;
 
 type Pending = { resolve: (r: TraceResult) => void; reject: (e: Error) => void; timer: number; background: boolean };
 
-/** 管理 Pyodide Worker 的生命週期與請求對應。 */
-export class PyodideRuntime implements LanguageRuntime {
+/**
+ * 在 Web Worker 中執行追蹤器：管理 Worker 的生命週期與請求對應。
+ * 執行卡住（例如單行內的超大運算）時直接 terminate 重建，不會卡住畫面。
+ */
+export class WorkerRuntime implements LanguageRuntime {
   private worker!: Worker;
+  private createWorker: () => Worker;
+  /** 錯誤訊息中的執行環境名稱，例如 "Python" */
+  private name: string;
   private ready!: Promise<void>;
   private pending = new Map<number, Pending>();
   private nextId = 1;
   private listeners = new Set<(s: RuntimeStatus, detail?: string) => void>();
   status: RuntimeStatus = 'loading';
 
-  constructor() {
+  constructor(createWorker: () => Worker, name: string) {
+    this.createWorker = createWorker;
+    this.name = name;
     this.spawn();
   }
 
@@ -33,7 +48,7 @@ export class PyodideRuntime implements LanguageRuntime {
 
   private spawn() {
     this.setStatus('loading');
-    this.worker = new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' });
+    this.worker = this.createWorker();
     this.ready = new Promise((resolve, reject) => {
       this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const msg = e.data;
@@ -73,11 +88,11 @@ export class PyodideRuntime implements LanguageRuntime {
         // Worker 重建後，排在它後面、還沒回應的其他執行也不會有結果了，一併結束
         for (const [otherId, other] of this.pending) {
           clearTimeout(other.timer);
-          other.reject(new Error('The Python runtime was restarted. Please run again.'));
+          other.reject(new Error(`The ${this.name} runtime was restarted. Please run again.`));
           this.pending.delete(otherId);
         }
         this.spawn();
-        reject(new Error(`Execution took longer than ${RUN_TIMEOUT_MS / 1000}s and was stopped. The Python runtime is restarting…`));
+        reject(new Error(`Execution took longer than ${RUN_TIMEOUT_MS / 1000}s and was stopped. The ${this.name} runtime is restarting…`));
       }, RUN_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timer, background });
       this.worker.postMessage({ type: 'run', id, code, call } satisfies WorkerRequest);

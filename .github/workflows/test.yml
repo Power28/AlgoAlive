@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       # tracer 測試直接在 Python 執行；版本對齊 Pyodide 0.26 內的 Python 3.12

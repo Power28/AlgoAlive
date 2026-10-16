@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { Value, SliceInfo } from '../types';
 import { formatCell, formatValue, valueKey } from '../lib/value';
 import { WINDOW_PAIRS, type Pointer } from '../lib/pointers';
-import { useHeap } from '../lib/heapContext';
+import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 
 const MIN_CELL = 48;
@@ -38,10 +38,11 @@ interface Props {
 }
 
 export function ArrayView({ name, kind, items, truncated, keys, prevItems, pointers, compared, wholeCompared, written, wholeWritten, slices = [] }: Props) {
+  const fmt = useValueFormat();
   const heap = useHeap();
   const n = items.length;
   // 格子寬度依最長內容調整（例如 BFS 佇列中的座標 tuple），整列統一寬度才能對齊指針
-  const longest = Math.max(0, ...items.map((it) => formatCell(it, heap).length));
+  const longest = Math.max(0, ...items.map((it) => formatCell(it, heap, fmt).length));
   const CELL = Math.min(MAX_CELL, Math.max(MIN_CELL, longest * 8.5 + 14));
   const STEP = CELL + GAP;
 
@@ -115,14 +116,14 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
             {items.map((item, i) => {
               const changed = prevItems !== undefined && valueKey(prevItems[i]) !== valueKey(item);
               const accent = colorAt.get(i);
-              const text = formatCell(item, heap);
+              const text = formatCell(item, heap, fmt);
               return (
                 <motion.div
                   key={keys[i] ?? i}
                   layout
                   layoutDependency={order}
                   transition={spring}
-                  title={formatValue(item, heap)}
+                  title={formatValue(item, heap, fmt)}
                   className="flex shrink-0 items-center justify-center rounded-md border font-mono font-semibold"
                   style={{
                     width: CELL,

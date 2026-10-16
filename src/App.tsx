@@ -16,7 +16,7 @@ import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
 import { designStarts } from './components/DesignTimeline';
 import { CallAssist, CallHintBox } from './components/CallAssist';
 import { lineHint } from './components/ConditionPanel';
-import { getLanguage } from './languages';
+import { getLanguage, LANGUAGES, type LanguageId } from './languages';
 import type { RuntimeStatus } from './languages/types';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
@@ -76,10 +76,10 @@ export default function App() {
   const heapNames = useMemo(() => language.analyzeHeaps(run?.code ?? ''), [language, run?.code]);
   // 設計類題目由操作順序說明，每個方法各自一次呼叫，不另外畫遞迴樹（除非方法內真的有遞迴）
   const callTree = useMemo(() => {
-    const tree = buildCallTree(steps);
+    const tree = buildCallTree(steps, language.format);
     if (trace?.design && !hasRecursion(tree)) return null;
     return showCallTree(tree) ? tree : null;
-  }, [steps, trace?.design]);
+  }, [steps, trace?.design, language]);
   const designCalls = trace?.design?.calls;
   const starts = useMemo(() => (designCalls ? designStarts(steps, designCalls.length) : []), [steps, designCalls]);
   const playback = usePlayback(steps.length, trace);
@@ -102,6 +102,19 @@ export default function App() {
 
   const editActive = (patch: { code?: string; call?: string }) => {
     update(active.id, patch);
+  };
+
+  /** 切換語言：程式碼還是範本（或空白）時直接換成新語言的範本；已經修改過就開新頁籤，不覆蓋 */
+  const switchLanguage = (id: LanguageId) => {
+    if (id === language.id) return;
+    const untouched = !active.code.trim() || active.code === language.blank.code;
+    if (untouched && !active.exampleId) {
+      const { blank } = getLanguage(id);
+      update(active.id, { language: id, code: blank.code, call: blank.call });
+    } else {
+      add(blankTab(id));
+    }
+    setLeftMode('code');
   };
 
   const closeTab = (id: string) => {
@@ -192,11 +205,26 @@ export default function App() {
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-850">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-ink-700 px-2">
             <ModeButton active={leftMode === 'code'} onClick={() => setLeftMode('code')} icon={<Code2 size={14} />}>
-              {t('code')} <span className="font-normal text-ink-400">· {language.label}</span>
+              {t('code')}
             </ModeButton>
             <ModeButton active={leftMode === 'guide'} onClick={() => setLeftMode('guide')} icon={<BookOpen size={14} />} data-action="guide">
               {t('guide')}
             </ModeButton>
+            <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-400" title={t('languageHint')}>
+              <span className="hidden sm:inline">{t('languageLabel')}</span>
+              <select
+                value={language.id}
+                onChange={(e) => switchLanguage(e.target.value as LanguageId)}
+                className="rounded-md border border-ink-600 bg-ink-900 px-1.5 py-1 text-xs text-ink-100 outline-none focus:border-brand"
+                data-action="language"
+              >
+                {Object.values(LANGUAGES).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {leftMode === 'guide' && (
@@ -232,7 +260,7 @@ export default function App() {
                 currentLine={step?.lineNumber}
                 prevLine={prevStep?.lineNumber}
                 errorLine={errorLine}
-                hint={stale ? undefined : lineHint(step)}
+                hint={stale ? undefined : lineHint(step, language.format)}
                 onRun={visualize}
               />
             </div>
@@ -340,6 +368,7 @@ export default function App() {
                 heapNames={heapNames}
                 callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}
                 design={designCalls ? { calls: designCalls, starts, onSeek: playback.seek } : undefined}
+                format={language.format}
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
               />
             ) : (

@@ -84,6 +84,11 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onRename, onNewBlank
               }`}
             >
               {tab.tutorialId && <BookOpen size={12} className={active ? 'text-brand' : 'text-ink-400'} />}
+              {tab.language === 'javascript' && (
+                <span className="rounded bg-[#f7df1e] px-1 font-mono text-[9px] leading-3.5 font-bold text-ink-900" data-tab-lang="javascript">
+                  JS
+                </span>
+              )}
               {editingId === tab.id ? (
                 <input
                   autoFocus
