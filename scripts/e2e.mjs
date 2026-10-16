@@ -611,6 +611,12 @@ async function testJavaScript(page) {
   const end = await page.evaluate(() => document.querySelector('main')?.innerText.match(/→\s*(null|None)/)?.[1] ?? null);
   await page.click('[role="tab"][aria-selected="true"] button');
   record('JavaScript values use JavaScript literals', end === 'null' ? null : `got ${JSON.stringify(end)}`);
+
+  // 說明卡片：JavaScript 的運算子、true / false 與短路說明
+  const cond = await openAndStepTo(page, 'javascript', 'js155', '[data-condition]', '||');
+  record('JavaScript condition cards use || and true', /0 === 0 \|\| …[\s\S]*true[\s\S]*\|\| stops at the first truthy value/.test(cond) ? null : `got ${JSON.stringify(cond)}`);
+  const op = await openAndStepTo(page, 'javascript', 'js1', '[data-op]', 'seen');
+  record('JavaScript container ops get a card', /seen\.set\(nums\[i\], i\)[\s\S]*seen\[2\] = 0/.test(op) ? null : `got ${JSON.stringify(op)}`);
 }
 
 async function testLanguage(page) {

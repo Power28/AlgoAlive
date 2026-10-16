@@ -12,19 +12,20 @@ const MAX_VALUE = 28;
 
 /** 條件式的結果徽章：✓ True / ✗ False / ? */
 export function ResultBadge({ result, size = 'md' }: { result: boolean | null | undefined; size?: 'sm' | 'md' }) {
+  const fmt = useValueFormat();
   const t = useT();
   const cls = size === 'sm' ? 'px-1.5 py-px text-[11px] gap-1' : 'px-2 py-0.5 text-xs gap-1.5';
   const icon = size === 'sm' ? 11 : 13;
   if (result === true)
     return (
       <span className={`inline-flex items-center rounded-md bg-ok/20 font-mono font-semibold text-ok ${cls}`}>
-        <Check size={icon} strokeWidth={3} /> True
+        <Check size={icon} strokeWidth={3} /> {fmt.bool(true)}
       </span>
     );
   if (result === false)
     return (
       <span className={`inline-flex items-center rounded-md bg-err/20 font-mono font-semibold text-err ${cls}`}>
-        <X size={icon} strokeWidth={3} /> False
+        <X size={icon} strokeWidth={3} /> {fmt.bool(false)}
       </span>
     );
   return (
