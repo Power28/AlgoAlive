@@ -7,6 +7,8 @@ type Monaco = Parameters<OnMount>[1];
 interface Props {
   /** 每個頁籤一個 Monaco model，切換頁籤時各自保留復原紀錄 */
   path: string;
+  /** Monaco 的語言 id（語法上色） */
+  language: string;
   value: string;
   onChange: (v: string) => void;
   /** 即將執行的行 */
@@ -34,7 +36,7 @@ const defineTheme: BeforeMount = (monaco) => {
   });
 };
 
-export function CodeEditor({ path, value, onChange, currentLine, prevLine, errorLine, hint, onRun }: Props) {
+export function CodeEditor({ path, language, value, onChange, currentLine, prevLine, errorLine, hint, onRun }: Props) {
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const decorations = useRef<ReturnType<MonacoEditor['createDecorationsCollection']> | null>(null);
@@ -86,7 +88,7 @@ export function CodeEditor({ path, value, onChange, currentLine, prevLine, error
   return (
     <Editor
       path={path}
-      language="python"
+      language={language}
       theme="algoalive-dark"
       value={value}
       onChange={(v) => onChange(v ?? '')}

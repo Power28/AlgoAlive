@@ -1,5 +1,5 @@
-import type { Heap, PyValue } from '../types';
-import { formatCell, formatPy, isScalar, nodeKind } from './pyValue';
+import type { Heap, Value } from '../types';
+import { formatCell, formatValue, isScalar, nodeKind } from './value';
 import { pointerColor } from './pointers';
 
 export interface GraphNode {
@@ -27,20 +27,20 @@ const ADJ_NAME = /^(graph|adj|adjacency|adj_?list|g|neighbors|nbrs|edges_from|ch
 export const isAdjacencyName = (name: string) => ADJ_NAME.test(name);
 
 /** 鄰接串列的節點 key：Python repr，與變數值比對用 */
-export const scalarKey = (v: PyValue) => formatPy(v);
+export const scalarKey = (v: Value) => formatValue(v);
 
 /** 任何值對應到的節點 key（物件 → heap id，純量 → repr），不是節點則為 null */
-export function nodeKeyOf(v: PyValue | undefined): string | null {
+export function nodeKeyOf(v: Value | undefined): string | null {
   if (!v) return null;
   if (v.type === 'ref') return v.id;
   return isScalar(v) && v.type !== 'none' ? scalarKey(v) : null;
 }
 
-const containerItems = (v: PyValue): PyValue[] | null =>
+const containerItems = (v: Value): Value[] | null =>
   v.type === 'list' || v.type === 'tuple' || v.type === 'set' || v.type === 'deque' ? v.items : null;
 
 /** 鄰接串列的一個元素：純量 → 鄰居；(鄰居, 權重) → 帶權重的邊 */
-function neighborOf(item: PyValue): { key: string; label: string; weight?: string } | null {
+function neighborOf(item: Value): { key: string; label: string; weight?: string } | null {
   if (isScalar(item) && item.type !== 'none') return { key: scalarKey(item), label: formatCell(item) };
   const pair = containerItems(item);
   if (pair && pair.length === 2 && isScalar(pair[0])) {
@@ -50,12 +50,12 @@ function neighborOf(item: PyValue): { key: string; label: string; weight?: strin
 }
 
 /** dict / list[list] 形式的鄰接串列 → 圖；結構不符時回傳 null */
-export function adjacencyGraph(name: string, v: PyValue): GraphModel | null {
-  const rows: [PyValue, PyValue][] =
+export function adjacencyGraph(name: string, v: Value): GraphModel | null {
+  const rows: [Value, Value][] =
     v.type === 'dict'
       ? v.entries
       : v.type === 'list'
-        ? v.items.map((row, i) => [{ type: 'int', value: i }, row] as [PyValue, PyValue])
+        ? v.items.map((row, i) => [{ type: 'int', value: i }, row] as [Value, Value])
         : [];
   if (!rows.length) return null;
 
@@ -140,7 +140,7 @@ export interface GraphOverlay {
 }
 
 /** 依目前的區域變數，算出每個節點的標籤、拜訪狀態、屬性與要強調的邊 */
-export function graphOverlay(graph: GraphModel, vars: Record<string, PyValue>, exclude: Set<string>): GraphOverlay {
+export function graphOverlay(graph: GraphModel, vars: Record<string, Value>, exclude: Set<string>): GraphOverlay {
   const keys = new Set(graph.nodes.map((n) => n.key));
   const isObjectGraph = graph.nodes.length > 0 && /^o\d+$/.test(graph.nodes[0].key);
   const o: GraphOverlay = { labels: new Map(), visited: new Set(), frontier: new Set(), badges: new Map(), fill: new Map(), activeEdges: new Set() };
@@ -191,7 +191,7 @@ export function graphOverlay(graph: GraphModel, vars: Record<string, PyValue>, e
     }
     if (ATTR_NAMES.test(name) && !isObjectGraph) {
       // list：索引就是節點 key；dict：key 就是節點
-      const pairs: [string, PyValue][] =
+      const pairs: [string, Value][] =
         v.type === 'list' ? v.items.map((x, i) => [String(i), x]) : v.type === 'dict' ? v.entries.map(([k, x]) => [nodeKeyOf(k) ?? '', x]) : [];
       for (const [k, x] of pairs) {
         if (!keys.has(k) || !isScalar(x)) continue;

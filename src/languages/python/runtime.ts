@@ -1,20 +1,14 @@
-import type { TraceResult } from '../types';
+import type { TraceResult } from '../../types';
+import type { LanguageRuntime, RunOptions, RuntimeStatus } from '../types';
 import type { WorkerRequest, WorkerResponse } from './pyodide.worker';
-
-export type RuntimeStatus = 'loading' | 'ready' | 'running' | 'error';
 
 /** 單次執行的牆鐘時間上限；超過就砍掉 Worker 重建（MAX_STEPS 擋不住的單行超大運算）。 */
 const RUN_TIMEOUT_MS = 10_000;
 
 type Pending = { resolve: (r: TraceResult) => void; reject: (e: Error) => void; timer: number; background: boolean };
 
-export interface RunOptions {
-  /** 背景執行（例如教學動畫）：不改變執行狀態，主畫面的「視覺化」按鈕不會因此變成忙碌中 */
-  background?: boolean;
-}
-
 /** 管理 Pyodide Worker 的生命週期與請求對應。 */
-export class PythonRunner {
+export class PyodideRuntime implements LanguageRuntime {
   private worker!: Worker;
   private ready!: Promise<void>;
   private pending = new Map<number, Pending>();
@@ -91,4 +85,3 @@ export class PythonRunner {
   }
 }
 
-export const runner = new PythonRunner();

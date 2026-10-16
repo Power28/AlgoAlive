@@ -1,5 +1,5 @@
 import type { ExecutionStep } from '../types';
-import { formatPy } from './pyValue';
+import { formatValue } from './value';
 
 export interface CallNode {
   id: number;
@@ -75,7 +75,7 @@ export function buildCallTree(steps: ExecutionStep[]): CallTree {
     if (step.event === 'return' && stack.length) {
       const node = nodes[stack[stack.length - 1]];
       node.endStep = i;
-      node.returned = step.returnValue ? clip(formatPy(step.returnValue, step.heap), 14) : undefined;
+      node.returned = step.returnValue ? clip(formatValue(step.returnValue, step.heap), 14) : undefined;
     }
     // 存副本：之後的 pop() 會修改 stack，不能讓前面步驟的紀錄跟著變
     stackIds.push([...stack]);

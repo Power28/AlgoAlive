@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { CircleHelp, Lightbulb, Wand2, Wrench } from 'lucide-react';
 import type { CallHint, CallInfo } from '../types';
-import { callNeedsHelp, exampleCall, findFunctions } from '../lib/callSuggest';
+import type { Language } from '../languages';
 import { useT } from '../i18n';
 
 const KIND_KEY = { ListNode: 'convListNode', TreeNode: 'convTreeNode', Node: 'convGraph' } as const;
 
 /** 測試呼叫下方：解讀結果、對不上程式碼時的範例建議、格式說明 */
-export function CallAssist({ code, call, info, hasFix, onFill }: {
+export function CallAssist({ language, code, call, info, hasFix, onFill }: {
+  /** 找函式、產生範例呼叫、格式說明都依語言而定 */
+  language: Language;
   code: string;
   call: string;
   /** 最近一次執行如何解讀測試呼叫（測資沒改過時才傳入） */
@@ -18,8 +20,8 @@ export function CallAssist({ code, call, info, hasFix, onFill }: {
 }) {
   const t = useT();
   const [help, setHelp] = useState(false);
-  const funcs = useMemo(() => findFunctions(code), [code]);
-  const suggestions = !hasFix && callNeedsHelp(call, funcs, code) ? funcs.slice(0, 2).map(exampleCall) : [];
+  const funcs = useMemo(() => language.findFunctions(code), [language, code]);
+  const suggestions = !hasFix && language.callNeedsHelp(call, funcs, code) ? funcs.slice(0, 2).map(language.exampleCall) : [];
 
   return (
     <div className="mt-1.5 grid gap-1.5 text-xs">
@@ -59,21 +61,11 @@ export function CallAssist({ code, call, info, hasFix, onFill }: {
         </button>
         {help && (
           <ul className="mt-1.5 grid gap-1 rounded-md border border-ink-700 bg-ink-900 p-2.5 text-ink-300" data-call-help>
-            <li>
-              <code className="text-ink-100">twoSum([2, 7, 11, 15], 9)</code> — {t('fmtCall')}
-            </li>
-            <li>
-              <code className="text-ink-100">nums = [2,7,11,15], target = 9</code> — {t('fmtLeetCode')}
-            </li>
-            <li>
-              <code className="text-ink-100">[2,7,11,15]</code> ⏎ <code className="text-ink-100">9</code> — {t('fmtLines')}
-            </li>
-            <li>
-              <code className="text-ink-100">head = [1,2,3]</code>、<code className="text-ink-100">root = [3,9,20,null,null,15,7]</code> — {t('fmtNodes')}
-            </li>
-            <li>
-              <code className="text-ink-100">["MinStack","push"], [[],[1]]</code> — {t('fmtDesign')}
-            </li>
+            {language.callFormats.map((f) => (
+              <li key={f.example}>
+                <code className="text-ink-100">{f.example}</code> — {t(f.note)}
+              </li>
+            ))}
           </ul>
         )}
       </div>

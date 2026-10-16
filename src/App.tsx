@@ -7,17 +7,17 @@ import { TabBar } from './components/TabBar';
 import { TutorialView } from './components/TutorialView';
 import { Visualizer } from './components/Visualizer';
 import { usePlayback } from './hooks/usePlayback';
-import { BLANK_CALL, BLANK_CODE, tabFromExample, useTabs } from './hooks/useTabs';
+import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
 import { useLang, useT } from './i18n';
 import { computeCellKeys, computeGridKeys } from './lib/cellKeys';
-import { analyzeHeaps, analyzeIndexing } from './lib/indexing';
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
 import { designStarts } from './components/DesignTimeline';
 import { CallAssist, CallHintBox } from './components/CallAssist';
 import { lineHint } from './components/ConditionPanel';
-import { runner, type RuntimeStatus } from './runtime/runner';
+import { getLanguage } from './languages';
+import type { RuntimeStatus } from './languages/types';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
 
@@ -46,18 +46,21 @@ export default function App() {
   const { lang, setLang } = useLang();
   const { tabs, active, select, update, add, close } = useTabs();
   const [runs, setRuns] = useState<Record<string, Run>>({});
-  const [status, setStatus] = useState<RuntimeStatus>(runner.status);
+  // 目前頁籤的語言：決定執行環境、編輯器語法與程式碼分析
+  const language = getLanguage(active.language);
+  const runtime = language.runtime();
+  const [status, setStatus] = useState<RuntimeStatus>(runtime.status);
   const [statusDetail, setStatusDetail] = useState<string>();
   const [leftMode, setLeftMode] = useState<'code' | 'guide'>('code');
   const [library, setLibrary] = useState<{ topicId?: string } | null>(null);
 
   useEffect(
     () =>
-      runner.onStatus((s, detail) => {
+      runtime.onStatus((s, detail) => {
         setStatus(s);
         setStatusDetail(detail);
       }),
-    [],
+    [runtime],
   );
 
   const run = runs[active.id];
@@ -66,11 +69,11 @@ export default function App() {
   const steps = trace?.steps ?? EMPTY_STEPS;
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
   const gridKeys = useMemo(() => computeGridKeys(steps), [steps]);
-  const indexMap = useMemo(() => analyzeIndexing(run?.code ?? ''), [run?.code]);
+  const indexMap = useMemo(() => language.analyzeIndexing(run?.code ?? ''), [language, run?.code]);
   // 卡片欄位高度整段執行只算一次，播放時固定
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
-  const heapNames = useMemo(() => analyzeHeaps(run?.code ?? ''), [run?.code]);
+  const heapNames = useMemo(() => language.analyzeHeaps(run?.code ?? ''), [language, run?.code]);
   // 設計類題目由操作順序說明，每個方法各自一次呼叫，不另外畫遞迴樹（除非方法內真的有遞迴）
   const callTree = useMemo(() => {
     const tree = buildCallTree(steps);
@@ -89,12 +92,12 @@ export default function App() {
     const { id, code } = active;
     setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, error: null } }));
     try {
-      const result = await runner.run(code, call);
+      const result = await runtime.run(code, call);
       setRuns((r) => ({ ...r, [id]: { trace: result, code, call, error: null } }));
     } catch (err) {
       setRuns((r) => ({ ...r, [id]: { trace: null, code, call, error: err instanceof Error ? err.message : String(err) } }));
     }
-  }, [active]);
+  }, [active, runtime]);
   const visualize = useCallback(() => runWith(active.call), [runWith, active.call]);
 
   const editActive = (patch: { code?: string; call?: string }) => {
@@ -156,7 +159,7 @@ export default function App() {
           onClose={closeTab}
           onRename={(id, title) => update(id, { title })}
           onNewBlank={() => {
-            add({ title: '', code: BLANK_CODE, call: BLANK_CALL });
+            add(blankTab(active.language));
             setLeftMode('code');
           }}
           onOpenLibrary={() => setLibrary({})}
@@ -180,7 +183,7 @@ export default function App() {
             <Languages size={14} />
             {lang === 'en' ? '中文' : 'EN'}
           </button>
-          <RuntimeBadge status={status} detail={statusDetail} />
+          <RuntimeBadge status={status} detail={statusDetail} name={language.runtimeName} />
         </div>
       </header>
 
@@ -189,7 +192,7 @@ export default function App() {
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-850">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-ink-700 px-2">
             <ModeButton active={leftMode === 'code'} onClick={() => setLeftMode('code')} icon={<Code2 size={14} />}>
-              {t('code')} <span className="font-normal text-ink-400">· Python 3</span>
+              {t('code')} <span className="font-normal text-ink-400">· {language.label}</span>
             </ModeButton>
             <ModeButton active={leftMode === 'guide'} onClick={() => setLeftMode('guide')} icon={<BookOpen size={14} />} data-action="guide">
               {t('guide')}
@@ -223,6 +226,7 @@ export default function App() {
             <div className="min-h-0 flex-1">
               <CodeEditor
                 path={active.id}
+                language={language.monaco}
                 value={active.code}
                 onChange={(v) => editActive({ code: v })}
                 currentLine={step?.lineNumber}
@@ -241,7 +245,7 @@ export default function App() {
                   onKeyDown={(e) => e.key === 'Enter' && visualize()}
                   spellCheck={false}
                   className="min-w-0 flex-1 rounded-md border border-ink-600 bg-ink-900 px-3 py-2 font-mono text-sm outline-none focus:border-brand"
-                  placeholder="nums = [2,7,11,15], target = 9"
+                  placeholder={language.callPlaceholder}
                 />
                 <button
                   onClick={visualize}
@@ -256,6 +260,7 @@ export default function App() {
                 </button>
               </div>
               <CallAssist
+                language={language}
                 code={active.code}
                 call={active.call}
                 info={stale ? undefined : trace?.call}
@@ -338,7 +343,7 @@ export default function App() {
                 context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
               />
             ) : (
-              !error && !run?.error && <EmptyState status={status} />
+              !error && !run?.error && <EmptyState status={status} name={language.runtimeName} />
             )}
             {trace && !error && playback.index === playback.last && trace.returnValue && (
               <div className="mt-6 text-xs text-ink-400">{t('finished')}</div>
@@ -404,23 +409,24 @@ function EventChip({ event }: { event: 'line' | 'return' | 'exception' }) {
   return <span className={`rounded px-1.5 py-px ${cls}`}>{label}</span>;
 }
 
-function RuntimeBadge({ status, detail }: { status: RuntimeStatus; detail?: string }) {
+function RuntimeBadge({ status, detail, name }: { status: RuntimeStatus; detail?: string; name: string }) {
   const t = useT();
+  const lang = { lang: name };
   if (status === 'loading')
     return (
       <span className="flex items-center gap-1.5 text-xs text-ink-400">
-        <Loader2 size={14} className="animate-spin" /> <span className="hidden md:inline">{t('runtimeLoading')}</span>
+        <Loader2 size={14} className="animate-spin" /> <span className="hidden md:inline">{t('runtimeLoading', lang)}</span>
       </span>
     );
   if (status === 'error')
     return (
       <span className="flex items-center gap-1.5 text-xs text-err" title={detail}>
-        <TriangleAlert size={14} /> <span className="hidden md:inline">{t('runtimeFailed')}</span>
+        <TriangleAlert size={14} /> <span className="hidden md:inline">{t('runtimeFailed', lang)}</span>
       </span>
     );
   return (
-    <span className="flex items-center gap-1.5 text-xs text-ok" data-runtime="ready" title={t('runtimeReady')}>
-      <Zap size={14} /> <span className="hidden md:inline">{t('runtimeReady')}</span>
+    <span className="flex items-center gap-1.5 text-xs text-ok" data-runtime="ready" title={t('runtimeReady', lang)}>
+      <Zap size={14} /> <span className="hidden md:inline">{t('runtimeReady', lang)}</span>
     </span>
   );
 }
@@ -439,7 +445,7 @@ function ErrorBox({ message, line, timeout }: { message: string; line?: number |
   );
 }
 
-function EmptyState({ status }: { status: RuntimeStatus }) {
+function EmptyState({ status, name }: { status: RuntimeStatus; name: string }) {
   const t = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-ink-400">
@@ -455,7 +461,7 @@ function EmptyState({ status }: { status: RuntimeStatus }) {
           </div>
         ))}
       </div>
-      <p className="max-w-sm text-sm">{status === 'loading' ? t('emptyLoading') : t('emptyIdle')}</p>
+      <p className="max-w-sm text-sm">{t(status === 'loading' ? 'emptyLoading' : 'emptyIdle', { lang: name })}</p>
     </div>
   );
 }

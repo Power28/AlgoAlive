@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { CornerDownLeft, TriangleAlert } from 'lucide-react';
-import type { ExecutionStep, PyValue, SequenceValue } from '../types';
-import { charItems, formatPy, intValue, isDict, isGrid, isSequence, isSet, nodeKind } from '../lib/pyValue';
+import type { ExecutionStep, Value, SequenceValue } from '../types';
+import { charItems, formatValue, intValue, isDict, isGrid, isSequence, isSet, nodeKind } from '../lib/value';
 import { HeapContext } from '../lib/heapContext';
 import { isPointerName, pointerColor, pointersFor } from '../lib/pointers';
 import type { IndexMap } from '../lib/indexing';
@@ -108,7 +108,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
   }
 
   // 1D 序列：list / tuple / deque，以及「被當成陣列使用」的字串
-  const sequences: { name: string; kind: string; items: PyValue[]; truncated?: number; prevItems?: PyValue[] }[] = [];
+  const sequences: { name: string; kind: string; items: Value[]; truncated?: number; prevItems?: Value[] }[] = [];
   const shownAsCells = new Set<string>();
   for (const [name, v] of entries) {
     const p = prevVars?.[name];
@@ -186,7 +186,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
           <span className="text-ink-300">
             {design && (step.design?.index ?? 0) >= design.calls.length ? t('designOutput') : t('returned', { f: step.funcName })}
           </span>
-          <code className="font-semibold" data-return>{formatPy(returned, heap)}</code>
+          <code className="font-semibold" data-return>{formatValue(returned, heap)}</code>
         </Banner>
       )}
       {step.event === 'exception' && step.exc && <ExcPanel key={`exc-${step.stepIndex}`} exc={step.exc} line={step.lineNumber} func={step.funcName} />}
@@ -256,7 +256,7 @@ export function Visualizer({ step, prev, next, cellKeys, gridKeys, indexMap, slo
         <DictView
           key={name}
           name={name}
-          value={v as Extract<PyValue, { type: 'dict' }>}
+          value={v as Extract<Value, { type: 'dict' }>}
           prev={prevVars?.[name]}
           lookups={lookups}
           compared={marks.vars.has(name)}

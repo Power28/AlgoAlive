@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CornerDownLeft, Repeat } from 'lucide-react';
 import type { ExecutionStep, Heap, LoopInfo } from '../types';
-import { formatPy } from '../lib/pyValue';
+import { formatValue } from '../lib/value';
 import { useT } from '../i18n';
 
 const ROW = 'flex h-9 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-thin';
@@ -66,7 +66,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
                         transition={{ type: 'spring', stiffness: 500, damping: 22 }}
                       >
                         <CornerDownLeft size={10} />
-                        {clip(formatPy(step.returnValue!, heap), 18)}
+                        {clip(formatValue(step.returnValue!, heap), 18)}
                       </motion.span>
                     )}
                   </span>

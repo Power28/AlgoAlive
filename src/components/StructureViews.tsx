@@ -1,6 +1,6 @@
 import { LayoutGroup, motion } from 'framer-motion';
 import type { Heap } from '../types';
-import { formatCell, formatPy, nodeKind, refTarget, valueKey } from '../lib/pyValue';
+import { formatCell, formatValue, nodeKind, refTarget, valueKey } from '../lib/value';
 import { useT } from '../i18n';
 import { markOutline } from '../lib/stepMarks';
 import { Header } from './ArrayView';
@@ -129,7 +129,7 @@ export function LinkedListView({ heap, prevHeap, labels, trail, compared }: Prop
                   <motion.div key={id} layoutId={`ll-${id}`} layoutDependency={signature} transition={spring} className="flex items-start">
                     <div className="flex flex-col items-center">
                       <div
-                        title={formatPy(val ?? { type: 'none' }, heap)}
+                        title={formatValue(val ?? { type: 'none' }, heap)}
                         className="flex h-11 min-w-11 items-center justify-center rounded-lg border-2 px-2 font-mono text-[15px] font-semibold transition-colors duration-300"
                         style={{ ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(id)), ...markOutline(!!compared?.has(id)) }}
                       >
@@ -285,7 +285,7 @@ export function TreeView({ heap, prevHeap, labels, trail, compared }: Props) {
                 transition={spring}
               >
                 <div
-                  title={formatPy(val ?? { type: 'none' }, heap)}
+                  title={formatValue(val ?? { type: 'none' }, heap)}
                   className="flex items-center justify-center rounded-full border-2 font-mono text-sm font-semibold transition-colors duration-300"
                   style={{ width: NODE, height: NODE, ...nodeStyle(nodeLabels, isNew, valChanged, trail?.has(p.id)), ...markOutline(!!compared?.has(p.id)) }}
                 >

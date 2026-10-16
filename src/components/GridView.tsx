@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import type { PyValue, SequenceValue } from '../types';
-import { formatCell, formatPy, valueKey } from '../lib/pyValue';
+import type { Value, SequenceValue } from '../types';
+import { formatCell, formatValue, valueKey } from '../lib/value';
 import { Header, STR_COLOR } from './ArrayView';
 import { useHeap } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
@@ -25,7 +25,7 @@ export interface GridMark {
 interface Props {
   name: string;
   value: SequenceValue;
-  prev?: PyValue;
+  prev?: Value;
   marks: GridMark[];
   /** 目前條件式正在比較的格子："row:col" */
   compared?: Set<string>;
@@ -85,7 +85,7 @@ export function GridView({ name, value, prev, marks, compared, written, keys }: 
                 <motion.div
                   key={key}
                   data-cell={key}
-                  title={formatPy(cell, heap)}
+                  title={formatValue(cell, heap)}
                   className="absolute top-0 left-0 flex items-center justify-center rounded-md border font-semibold"
                   initial={{ opacity: 0, scale: 0.6, x, y }}
                   animate={{ opacity: 1, scale: 1, x, y, backgroundColor: changed ? 'rgba(255,161,22,0.28)' : '#2a2a2a' }}

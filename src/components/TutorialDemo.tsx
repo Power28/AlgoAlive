@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { useL, useT } from '../i18n';
 import { computeCellKeys, computeGridKeys } from '../lib/cellKeys';
-import { analyzeHeaps, analyzeIndexing } from '../lib/indexing';
 import { infoSlotHeight } from '../lib/infoSlot';
 import { contextInfo } from '../lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from '../lib/callTree';
 import { designStarts } from './DesignTimeline';
-import { runner } from '../runtime/runner';
+import { getLanguage } from '../languages';
 import type { Example, Tutorial } from '../tutorials';
 import type { TraceResult } from '../types';
 import { Visualizer } from './Visualizer';
@@ -18,7 +17,7 @@ const traceCache = new Map<string, Promise<TraceResult>>();
 function loadTrace(ex: Example): Promise<TraceResult> {
   let p = traceCache.get(ex.id);
   if (!p) {
-    p = runner.run(ex.code, ex.call, { background: true });
+    p = getLanguage(ex.language).runtime().run(ex.code, ex.call, { background: true });
     p.catch(() => traceCache.delete(ex.id)); // 失敗的不快取，下次重試
     traceCache.set(ex.id, p);
   }
@@ -83,10 +82,11 @@ export function TutorialDemo({ tutorial, onOpenExample }: Props) {
 
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
   const gridKeys = useMemo(() => computeGridKeys(steps), [steps]);
-  const indexMap = useMemo(() => analyzeIndexing(example.code), [example.code]);
+  const language = getLanguage(example.language);
+  const indexMap = useMemo(() => language.analyzeIndexing(example.code), [language, example.code]);
   const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
   const context = useMemo(() => contextInfo(steps), [steps]);
-  const heapNames = useMemo(() => analyzeHeaps(example.code), [example.code]);
+  const heapNames = useMemo(() => language.analyzeHeaps(example.code), [language, example.code]);
   const callTree = useMemo(() => {
     const tree = buildCallTree(steps);
     if (trace?.design && !hasRecursion(tree)) return null;

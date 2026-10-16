@@ -1,33 +1,33 @@
-/** Python 值序列化後的帶標籤結構（由 tracer.py 的 _ser 產生）。 */
-export type PyValue =
+/** 執行期的值序列化後的帶標籤結構（與語言無關；Python 由 languages/python/tracer.py 的 _ser 產生）。 */
+export type Value =
   | { type: 'none' }
   | { type: 'bool'; value: boolean }
   | { type: 'int'; value: number | string }
   | { type: 'float'; value: number | string }
   | { type: 'str'; value: string }
-  | { type: 'list' | 'tuple' | 'deque' | 'set'; items: PyValue[]; truncated?: number }
-  | { type: 'dict'; entries: [PyValue, PyValue][]; cls?: string; truncated?: number }
+  | { type: 'list' | 'tuple' | 'deque' | 'set'; items: Value[]; truncated?: number }
+  | { type: 'dict'; entries: [Value, Value][]; cls?: string; truncated?: number }
   | { type: 'repr'; value: string; cls?: string }
   /** 自訂類別實例（ListNode、TreeNode…）的參照，內容在 step.heap[id] */
   | { type: 'ref'; id: string; cls: string };
 
 export interface HeapObject {
   cls: string;
-  fields: Record<string, PyValue>;
+  fields: Record<string, Value>;
 }
 
 export type Heap = Record<string, HeapObject>;
 
-export type SequenceValue = Extract<PyValue, { items: PyValue[] }>;
-export type DictValue = Extract<PyValue, { type: 'dict' }>;
+export type SequenceValue = Extract<Value, { items: Value[] }>;
+export type DictValue = Extract<Value, { type: 'dict' }>;
 
 export interface ExecutionStep {
   stepIndex: number;
   /** 對應 Monaco Editor 的行數（line 事件代表「即將執行」這一行） */
   lineNumber: number;
-  variables: Record<string, PyValue>;
+  variables: Record<string, Value>;
   event: 'line' | 'return' | 'exception';
-  returnValue?: PyValue;
+  returnValue?: Value;
   exception?: string;
   funcName: string;
   /** 使用者函式的呼叫深度（遞迴時 > 1） */
@@ -122,7 +122,7 @@ export type TryFlow =
 
 export interface MultiAssign {
   src: string;
-  pairs: { target: string; valueSrc: string; value: PyValue; display: string; loc?: TermLocation; targetLoc?: TermLocation }[];
+  pairs: { target: string; valueSrc: string; value: Value; display: string; loc?: TermLocation; targetLoc?: TermLocation }[];
   /** 左右兩邊是同一組名稱、順序不同 */
   swap: boolean;
 }
@@ -149,7 +149,7 @@ export interface CompInfo {
   kept?: boolean;
   valueDisplay?: string;
   /** 到目前為止組出來的結果 */
-  result: PyValue;
+  result: Value;
 }
 
 export interface ContainerOp {
@@ -163,7 +163,7 @@ export interface ContainerOp {
   container: 'list' | 'deque' | 'set' | 'dict' | 'heap';
   src: string;
   /** 放入 / 取出的值 */
-  value?: PyValue;
+  value?: Value;
   display?: string;
   /** 受影響的位置（放入的位置、被取出的格子） */
   index?: number;
@@ -214,7 +214,7 @@ export interface Calc {
   expr: string;
   /** 逐步化簡，例如 ["(0 + 7) // 2", "7 // 2", "3"] */
   stages: string[];
-  result: PyValue;
+  result: Value;
   resultDisplay: string;
   /** 右邊讀到的變數 / 格子 / 節點 */
   terms: ConditionTerm[];
@@ -237,7 +237,7 @@ export interface ConditionTerm {
   src: string;
   /** 顯示用：短的純量顯示值，否則為原本的寫法 */
   display: string;
-  value?: PyValue;
+  value?: Value;
   loc?: TermLocation;
 }
 
@@ -266,7 +266,7 @@ export interface Condition {
   /** test：if / while 只看真假；value：賦值 / 回傳，and / or 回傳的是運算元本身 */
   context?: 'test' | 'value';
   /** 整個運算式實際的值（例如 list1 or list2 回傳的那個節點） */
-  value?: PyValue;
+  value?: Value;
 }
 
 export interface LogicNode {
@@ -274,7 +274,7 @@ export interface LogicNode {
   src: string;
   display?: string;
   truthy?: boolean | null;
-  value?: PyValue;
+  value?: Value;
   /** 被 and / or 短路跳過 */
   skipped?: boolean;
   /** 比較與取值的求值順序（0 起算），動畫照這個順序播放 */
@@ -309,7 +309,7 @@ export interface CallInfo {
 
 export interface TraceResult {
   steps: ExecutionStep[];
-  returnValue?: PyValue;
+  returnValue?: Value;
   returnHeap?: Heap;
   error?: TraceError;
   stdout: string;

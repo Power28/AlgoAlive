@@ -1,5 +1,5 @@
-import type { PyValue } from '../types';
-import { intValue } from './pyValue';
+import type { Value } from '../types';
+import { intValue } from './value';
 import { consistentOffset, type IndexMap } from './indexing';
 
 /** 常見的索引 / 指針變數名稱。 */
@@ -53,7 +53,7 @@ export interface Pointer {
  * index === length 也接受（常見的「已越界 / 結束」狀態），畫在最後一格右邊。
  */
 export function pointersFor(
-  variables: Record<string, PyValue>,
+  variables: Record<string, Value>,
   seqName: string,
   length: number,
   indexMap: IndexMap,

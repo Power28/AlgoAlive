@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import type { Heap, LogicNode, PyValue } from '../types';
-import { formatPy } from '../lib/pyValue';
+import type { Heap, LogicNode, Value } from '../types';
+import { formatValue } from '../lib/value';
 import { useT, type StringKey } from '../i18n';
 import { ResultBadge } from './ConditionPanel';
 
@@ -23,7 +23,7 @@ function lastOrder(node: LogicNode): number {
 }
 
 /** 非布林值的真假說明，例如 [] → 空的容器為 False */
-function truthReason(value: PyValue | undefined): StringKey | null {
+function truthReason(value: Value | undefined): StringKey | null {
   if (!value || value.type === 'bool') return null;
   switch (value.type) {
     case 'none':
@@ -60,7 +60,7 @@ function Leaf({ node, heap }: { node: LogicNode; heap?: Heap }) {
     );
   }
   const reason = node.op === 'leaf' ? truthReason(node.value) : null;
-  const valueText = node.op === 'leaf' && node.value && node.display === node.src ? clip(formatPy(node.value, heap)) : null;
+  const valueText = node.op === 'leaf' && node.value && node.display === node.src ? clip(formatValue(node.value, heap)) : null;
   return (
     <motion.div
       className="flex flex-wrap items-center gap-2 rounded-md border border-ink-700 bg-ink-900/60 px-2 py-1"
@@ -125,7 +125,7 @@ function Gate({ node, heap, valueContext }: { node: LogicNode; heap?: Heap; valu
           <span className="font-mono font-semibold" style={{ color: style.color }}>
             {op} =
           </span>
-          {showValue && <code className="font-mono font-semibold text-ink-100">{clip(formatPy(node.value!, heap), 40)}</code>}
+          {showValue && <code className="font-mono font-semibold text-ink-100">{clip(formatValue(node.value!, heap), 40)}</code>}
           <ResultBadge result={node.truthy} size="sm" />
         </motion.div>
       )}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_EXAMPLE_IDS, getExample, type Example } from '../tutorials';
+import { DEFAULT_LANGUAGE, getLanguage, type LanguageId } from '../languages';
 
 export interface Tab {
   id: string;
@@ -7,6 +8,8 @@ export interface Tab {
   title: string;
   code: string;
   call: string;
+  /** 程式語言；舊版存下的頁籤沒有這個欄位，視為 Python */
+  language?: LanguageId;
   /** 從教學範例開啟時記錄來源，用來顯示「教學」面板 */
   tutorialId?: string;
   exampleId?: string;
@@ -19,13 +22,11 @@ interface TabsState {
 
 const STORAGE_KEY = 'algoalive.tabs.v1';
 
-export const BLANK_CODE = `def solve(nums: List[int]) -> int:
-    total = 0
-    for i in range(len(nums)):
-        total += nums[i]
-    return total
-`;
-export const BLANK_CALL = 'solve([1, 2, 3, 4])';
+/** 新的空白頁籤：該語言的預設程式碼與測試呼叫 */
+export function blankTab(language: LanguageId = DEFAULT_LANGUAGE): Omit<Tab, 'id'> {
+  const { blank } = getLanguage(language);
+  return { title: '', code: blank.code, call: blank.call, language };
+}
 
 const newId = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -35,6 +36,7 @@ export function tabFromExample(example: Example, tutorialId: string): Tab {
     title: '',
     code: example.code,
     call: example.call,
+    language: example.language ?? DEFAULT_LANGUAGE,
     tutorialId,
     exampleId: example.id,
   };
@@ -104,7 +106,7 @@ export function useTabs() {
       if (idx < 0) return s;
       const tabs = s.tabs.filter((t) => t.id !== id);
       if (!tabs.length) {
-        const blank: Tab = { id: newId(), title: '', code: BLANK_CODE, call: BLANK_CALL };
+        const blank: Tab = { id: newId(), ...blankTab() };
         return { tabs: [blank], activeId: blank.id };
       }
       // 關掉目前頁籤時，切到右邊那個（沒有就左邊）

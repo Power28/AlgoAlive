@@ -4,7 +4,7 @@
 
 每個範例檢查：
 - 執行沒有錯誤、步數在 MAX_STEPS 以內
-- 回傳值依前端 formatPy 的規則格式化後，等於 src/tutorials/*.ts 裡的 expected
+- 回傳值依前端 formatValue（Python 格式）的規則格式化後，等於 src/tutorials/*.ts 裡的 expected
 """
 import json
 import re
@@ -12,10 +12,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src" / "runtime"))
+sys.path.insert(0, str(ROOT / "src" / "languages" / "python"))
 from tracer import MAX_STEPS, algoalive_run  # noqa: E402
 
-# ─────────────── 與 src/lib/pyValue.ts 的 formatPy / formatCell 相同的格式化 ───────────────
+# ─────────────── 與 src/lib/value.ts 的 formatValue / formatCell（src/languages/python/format.ts）相同的格式化 ───────────────
 
 GRAPH_FIELDS = re.compile(r"^(neighbors|neighbours|children|adj|adjacent|edges|nbrs)$", re.I)
 TRIE_FIELDS = re.compile(r"^(children|child|next|links|nodes|kids)$", re.I)
