@@ -91,3 +91,22 @@ code {
 input[type='range'].aa-timeline {
   accent-color: var(--color-brand);
 }
+
+/* 動畫是舊的時候，「視覺化」按鈕外圈脈動 */
+.aa-pulse-ring {
+  animation: aa-pulse-ring 1.6s ease-out infinite;
+}
+@keyframes aa-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 161, 22, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(255, 161, 22, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aa-pulse-ring {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(255, 161, 22, 0.7);
+  }
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { BookOpen, Code2, Languages, Loader2, Play, TriangleAlert, Zap } from 'lucide-react';
+import { BookOpen, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
 import { CodeEditor } from './components/CodeEditor';
 import { Controls } from './components/Controls';
 import { Library } from './components/Library';
@@ -23,10 +23,19 @@ import type { TraceResult } from './types';
 /** 每個頁籤各自的執行結果（只存在記憶體中） */
 interface Run {
   trace: TraceResult | null;
-  /** 執行當下的程式碼，用來分析索引與指針 */
+  /** 執行當下的程式碼，用來分析索引與指針；與目前的程式碼不同時，畫面上的動畫就是舊的 */
   code: string;
+  /** 執行當下的測試呼叫 */
+  call: string;
   error: string | null;
-  stale: boolean;
+}
+
+/** 動畫是不是舊的：比較目前與上次執行時的程式碼、測資（改回原樣就不算修改） */
+function staleness(run: Run | undefined, code: string, call: string): 'code' | 'call' | 'both' | null {
+  if (!run?.trace) return null;
+  const codeChanged = run.code !== code;
+  const callChanged = run.call !== call;
+  return codeChanged && callChanged ? 'both' : codeChanged ? 'code' : callChanged ? 'call' : null;
 }
 
 const EMPTY_STEPS: TraceResult['steps'] = [];
@@ -51,6 +60,7 @@ export default function App() {
   );
 
   const run = runs[active.id];
+  const stale = staleness(run, active.code, active.call);
   const trace = run?.trace ?? null;
   const steps = trace?.steps ?? EMPTY_STEPS;
   const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
@@ -75,18 +85,17 @@ export default function App() {
 
   const visualize = useCallback(async () => {
     const { id, code, call } = active;
-    setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, error: null, stale: r[id]?.stale ?? false } }));
+    setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, error: null } }));
     try {
       const result = await runner.run(code, call);
-      setRuns((r) => ({ ...r, [id]: { trace: result, code, error: null, stale: false } }));
+      setRuns((r) => ({ ...r, [id]: { trace: result, code, call, error: null } }));
     } catch (err) {
-      setRuns((r) => ({ ...r, [id]: { trace: null, code, error: err instanceof Error ? err.message : String(err), stale: false } }));
+      setRuns((r) => ({ ...r, [id]: { trace: null, code, call, error: err instanceof Error ? err.message : String(err) } }));
     }
   }, [active]);
 
   const editActive = (patch: { code?: string; call?: string }) => {
     update(active.id, patch);
-    if (runs[active.id]?.trace) setRuns((r) => ({ ...r, [active.id]: { ...r[active.id], stale: true } }));
   };
 
   const closeTab = (id: string) => {
@@ -216,7 +225,7 @@ export default function App() {
                 currentLine={step?.lineNumber}
                 prevLine={prevStep?.lineNumber}
                 errorLine={errorLine}
-                hint={run?.stale ? undefined : lineHint(step)}
+                hint={stale ? undefined : lineHint(step)}
                 onRun={visualize}
               />
             </div>
@@ -234,7 +243,8 @@ export default function App() {
                 <button
                   onClick={visualize}
                   disabled={busy || status === 'error'}
-                  className="flex shrink-0 items-center gap-2 rounded-md bg-ok px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+                  // 動畫是舊的時候，按鈕外圈脈動提示要重新執行
+                  className={`flex shrink-0 items-center gap-2 rounded-md bg-ok px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-50 ${stale && !busy ? 'aa-pulse-ring' : ''}`}
                   title={t('visualizeHint')}
                   data-action="visualize"
                 >
@@ -250,6 +260,12 @@ export default function App() {
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-850">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-ink-700 px-4 text-xs font-semibold tracking-wide text-ink-100 uppercase">
             {t('visualization')}
+            {stale && (
+              <span className="ml-2 flex items-center gap-1 rounded bg-brand/15 px-1.5 py-px text-[10px] font-semibold text-brand normal-case" data-stale-badge>
+                <History size={11} />
+                {t('staleBadge')}
+              </span>
+            )}
             {step && (
               <span className="ml-auto flex items-center gap-2 font-mono text-[11px] normal-case">
                 <span className="text-ink-300">
@@ -262,9 +278,34 @@ export default function App() {
             )}
           </div>
 
-          {run?.stale && <div className="border-b border-brand/30 bg-brand/10 px-4 py-1.5 text-xs text-brand">{t('stale')}</div>}
+          {stale && (
+            // 明顯的提示卡：說明哪裡改了、下面是舊的結果，直接在這裡重新執行
+            <div className="shrink-0 border-b border-brand/40 bg-brand/10 px-4 py-3" data-stale={stale}>
+              <div className="flex flex-wrap items-center gap-3">
+                <RefreshCw size={18} className="shrink-0 text-brand" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-brand">{t(stale === 'code' ? 'staleCode' : stale === 'call' ? 'staleCall' : 'staleBoth')}</div>
+                  <div className="text-xs text-ink-300">{t('staleDetail')}</div>
+                </div>
+                <button
+                  onClick={visualize}
+                  disabled={busy || status === 'error'}
+                  className="flex shrink-0 items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-ink-900 transition hover:brightness-110 disabled:opacity-50"
+                  title={t('visualizeHint')}
+                  data-action="revisualize"
+                >
+                  {busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  {t('revisualize')}
+                </button>
+              </div>
+            </div>
+          )}
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-auto p-5">
+          <div
+            className="scrollbar-thin min-h-0 flex-1 overflow-auto p-5 transition-[opacity,filter] duration-300"
+            // 舊的動畫淡化成灰階，一眼看得出不是目前程式碼的結果（仍可以播放、拖曳）
+            style={{ opacity: stale ? 0.45 : 1, filter: stale ? 'grayscale(0.85)' : 'none' }}
+          >
             {run?.error && <ErrorBox message={run.error} />}
             {error && <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />}
             {step ? (

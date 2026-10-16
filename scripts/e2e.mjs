@@ -495,6 +495,42 @@ async function testNegativeBits(page) {
   record('negative numbers are drawn in two\'s complement', /32 bits shown/.test(view.title) && view.extend === '100' && view.note && view.signBits === 1 ? null : `got ${JSON.stringify(view)}`);
 }
 
+async function testStale(page) {
+  console.log('Stale animation');
+  // 預設頁籤：執行後修改測資 → 右邊標出「舊的結果」；改回原樣 → 提示消失；按提示卡上的按鈕重新執行 → 提示消失
+  await page.click('[role="tab"]');
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ \d+/.test(document.body.innerText));
+  const input = 'input[placeholder]';
+  const original = await page.$eval(input, (e) => e.value);
+  const staleState = () => page.evaluate(() => ({
+    stale: document.querySelector('[data-stale]')?.getAttribute('data-stale') ?? null,
+    badge: !!document.querySelector('[data-stale-badge]'),
+  }));
+  await page.$eval(input, (e) => e.select());
+  await page.keyboard.type(original.replace(/\)$/, ' )'));
+  await sleep(200);
+  const edited = await staleState();
+  await page.$eval(input, (e) => e.select());
+  await page.keyboard.type(original);
+  await sleep(200);
+  const reverted = await staleState();
+  record('editing the test call marks the animation as old, reverting clears it', edited.stale === 'call' && edited.badge && reverted.stale === null && !reverted.badge ? null : `got ${JSON.stringify({ edited, reverted })}`);
+
+  await page.$eval(input, (e) => e.select());
+  await page.keyboard.type(original.replace(/\)$/, ' )'));
+  await sleep(200);
+  await page.click('[data-action="revisualize"]');
+  await page.waitForFunction(() => !document.querySelector('[data-stale]'), { timeout: 30_000 }).catch(() => {});
+  const rerun = await staleState();
+  // 還原測資，避免影響後面的測試
+  await page.$eval(input, (e) => e.select());
+  await page.keyboard.type(original);
+  await page.click('[data-action="visualize"]');
+  await sleep(300);
+  record('the button on the notice runs the new code', rerun.stale === null && !rerun.badge ? null : `got ${JSON.stringify(rerun)}`);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -535,6 +571,7 @@ try {
   await testBuiltins(page);
   await testDesign(page);
   await testNegativeBits(page);
+  await testStale(page);
   await testDemo(page);
   await testExamples(page, expected);
 
