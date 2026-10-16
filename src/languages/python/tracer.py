@@ -18,7 +18,8 @@ import difflib
 import inspect
 import re
 
-MAX_STEPS = 500
+MAX_STEPS = 500          # 預設的步數上限；到達上限後使用者可以選擇追蹤更多步
+MAX_STEPS_LIMIT = 5000   # 最多能追蹤的步數（約 13 MB 的追蹤資料）
 MAX_ITEMS = 100      # 單一容器最多序列化的元素數
 MAX_DEPTH = 5        # 巢狀容器最大深度
 MAX_STR = 200
@@ -2062,7 +2063,8 @@ def _leet(value):
     return text if len(text) <= 24 else text[:23] + "…"
 
 
-def algoalive_run(code, call_src):
+def algoalive_run(code, call_src, max_steps=None):
+    limit = min(int(max_steps or MAX_STEPS), MAX_STEPS_LIMIT)
     steps = []
     stdout = io.StringIO()
     registry = _Registry()
@@ -2076,8 +2078,8 @@ def algoalive_run(code, call_src):
     entered = set()  # 已經出現過 line 事件的 frame；第一次出現代表剛進入這次呼叫
 
     def record(frame, event, ret=no_value, **extra):
-        if len(steps) >= MAX_STEPS:
-            raise TimeoutError(f"Execution exceeded {MAX_STEPS} steps (possible infinite loop)")
+        if len(steps) >= limit:
+            raise TimeoutError(f"Execution exceeded {limit} steps (possible infinite loop)")
         ctx = _Ctx(registry)
         depth = _user_depth(frame)
         variables, stack_refs = _snapshot(frame, ctx, depth)
@@ -2262,7 +2264,7 @@ def algoalive_run(code, call_src):
             result["returnHeap"] = heap
     except BaseException as exc:  # noqa: BLE001 — 必須攔下所有錯誤回報給前端
         sys.settrace(None)
-        is_timeout = isinstance(exc, TimeoutError) and len(steps) >= MAX_STEPS
+        is_timeout = isinstance(exc, TimeoutError) and len(steps) >= limit
         line = _error_line(exc)
         if isinstance(exc, SyntaxError) and exc.filename == INPUT_FILE:
             msg = f"SyntaxError in test call: {exc.msg}"

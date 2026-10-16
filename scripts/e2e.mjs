@@ -654,6 +654,53 @@ async function testJavaScript(page) {
   record('JavaScript sort gets a built-in card', /sort/i.test(sorted.title) && sorted.order === '1 4 7 9' ? null : `got ${JSON.stringify(sorted)}`);
 }
 
+async function testStepLimit(page, url) {
+  console.log('Step limit');
+  // 放入自訂程式碼：暫時改寫儲存的頁籤再重新載入，測完還原
+  const saved = await page.evaluate(() => localStorage.getItem('algoalive.tabs.v1'));
+  const tabs = {
+    tabs: [
+      { id: 'long', title: 'long', code: 'def total(n):\n    t = 0\n    for i in range(n):\n        t += i\n    return t\n', call: 'total(300)' },
+      { id: 'spin', title: 'spin', code: 'def spin(n):\n    i = 0\n    while i < n:\n        i = i * 1\n    return i\n', call: 'spin(3)' },
+    ],
+    activeId: 'long',
+  };
+  await page.evaluate((v) => localStorage.setItem('algoalive.tabs.v1', v), JSON.stringify(tabs));
+  await openApp(page, url);
+  const box = () => page.evaluate(() => {
+    const el = document.querySelector('[data-step-limit]');
+    return el ? { kind: el.dataset.stepLimit, text: el.innerText.replace(/\s+/g, ' ') } : null;
+  });
+
+  // 需要比較多步的正常程式：可以繼續追蹤到 2,000 步，之後順利跑完
+  const first = await runActiveTab(page);
+  const more = await box();
+  await page.click('[data-action="more-steps"]');
+  await page.waitForFunction(() => !document.querySelector('[data-step-limit]') && /Step \d+ \/ [1-9]\d*/.test(document.body.innerText), { timeout: 60_000 }).catch(() => {});
+  await page.click('[data-action="last"]');
+  await sleep(300);
+  const finished = await page.evaluate(() => document.querySelector('main [data-return]')?.textContent ?? null);
+  record(
+    'a long run offers to keep tracing and then finishes',
+    first.returned === null && more?.kind === 'more' && /500-step limit[\s\S]*Keep tracing up to 2,000 steps/.test(more.text) && finished === '44850'
+      ? null
+      : `got ${JSON.stringify({ first, more, finished })}`,
+  );
+
+  // 狀態重複的無窮迴圈：直接說明是無窮迴圈，不提供繼續追蹤
+  await page.click('[role="tab"]:nth-child(2)');
+  await runActiveTab(page);
+  const loop = await box();
+  const moreButton = await page.$('[data-action="more-steps"]');
+  record(
+    'a repeating state is reported as an infinite loop',
+    loop?.kind === 'loop' && /Steps \d+ and \d+ are in exactly the same state/.test(loop.text) && !moreButton ? null : `got ${JSON.stringify(loop)}`,
+  );
+
+  await page.evaluate((v) => (v ? localStorage.setItem('algoalive.tabs.v1', v) : localStorage.removeItem('algoalive.tabs.v1')), saved);
+  await openApp(page, url);
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -699,6 +746,7 @@ try {
   await testJavaScript(page);
   await testDemo(page);
   await testExamples(page, expected);
+  await testStepLimit(page, server.url);
 
   console.log('Console');
   record('no console errors', consoleErrors.length ? consoleErrors.slice(0, 5).join(' | ') : null);

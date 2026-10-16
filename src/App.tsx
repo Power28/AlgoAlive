@@ -15,6 +15,8 @@ import { contextInfo } from './lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
 import { designStarts } from './components/DesignTimeline';
 import { CallAssist, CallHintBox } from './components/CallAssist';
+import { StepLimitBox } from './components/StepLimitBox';
+import { DEFAULT_STEP_LIMIT } from './lib/stepLimit';
 import { lineHint } from './components/ConditionPanel';
 import { getLanguage, LANGUAGES, type LanguageId } from './languages';
 import type { RuntimeStatus } from './languages/types';
@@ -28,6 +30,8 @@ interface Run {
   code: string;
   /** 執行當下的測試呼叫 */
   call: string;
+  /** 這次執行的步數上限（到達上限後可以繼續追蹤更多步） */
+  maxSteps: number;
   error: string | null;
 }
 
@@ -88,14 +92,14 @@ export default function App() {
   const tutorial = getTutorial(active.tutorialId);
 
   /** 以指定的測資執行（一鍵修正測試呼叫時，新的測資還沒反映到 active） */
-  const runWith = useCallback(async (call: string) => {
+  const runWith = useCallback(async (call: string, maxSteps: number = DEFAULT_STEP_LIMIT) => {
     const { id, code } = active;
-    setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, error: null } }));
+    setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, maxSteps: r[id]?.maxSteps ?? maxSteps, error: null } }));
     try {
-      const result = await runtime.run(code, call);
-      setRuns((r) => ({ ...r, [id]: { trace: result, code, call, error: null } }));
+      const result = await runtime.run(code, call, { maxSteps });
+      setRuns((r) => ({ ...r, [id]: { trace: result, code, call, maxSteps, error: null } }));
     } catch (err) {
-      setRuns((r) => ({ ...r, [id]: { trace: null, code, call, error: err instanceof Error ? err.message : String(err) } }));
+      setRuns((r) => ({ ...r, [id]: { trace: null, code, call, maxSteps, error: err instanceof Error ? err.message : String(err) } }));
     }
   }, [active, runtime]);
   const visualize = useCallback(() => runWith(active.call), [runWith, active.call]);
@@ -360,7 +364,18 @@ export default function App() {
                   }}
                 />
               ) : (
-                <ErrorBox message={error.message} line={error.line} timeout={error.timeout} />
+                error.timeout ? (
+                  <StepLimitBox
+                    steps={steps}
+                    limit={run?.maxSteps ?? DEFAULT_STEP_LIMIT}
+                    line={error.line}
+                    busy={busy}
+                    onMore={(n) => runWith(active.call, n)}
+                    onSeek={playback.seek}
+                  />
+                ) : (
+                  <ErrorBox message={error.message} line={error.line} />
+                )
               ))}
             {step ? (
               <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
@@ -460,7 +475,7 @@ function RuntimeBadge({ status, detail, name }: { status: RuntimeStatus; detail?
   );
 }
 
-function ErrorBox({ message, line, timeout }: { message: string; line?: number | null; timeout?: boolean }) {
+function ErrorBox({ message, line }: { message: string; line?: number | null }) {
   const t = useT();
   return (
     <div data-error className="mb-5 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
@@ -468,7 +483,6 @@ function ErrorBox({ message, line, timeout }: { message: string; line?: number |
       <div>
         <div className="font-mono">{message}</div>
         {line ? <div className="mt-0.5 text-xs text-err/80">{t('atLine', { n: line })}</div> : null}
-        {timeout && <div className="mt-0.5 text-xs text-err/80">{t('timeoutNote')}</div>}
       </div>
     </div>
   );

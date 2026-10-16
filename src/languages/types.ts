@@ -16,6 +16,8 @@ export type RuntimeStatus = 'loading' | 'ready' | 'running' | 'error';
 export interface RunOptions {
   /** 背景執行（例如教學動畫）：不改變執行狀態，主畫面的「視覺化」按鈕不會因此變成忙碌中 */
   background?: boolean;
+  /** 步數上限（預設 500；到達上限後使用者可以選擇追蹤更多步） */
+  maxSteps?: number;
 }
 
 /** 執行環境：在背景（Web Worker）執行程式並回傳逐步的追蹤結果 */

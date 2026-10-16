@@ -2,7 +2,7 @@ import type { TraceResult } from '../types';
 import type { LanguageRuntime, RunOptions, RuntimeStatus } from './types';
 
 /** 主執行緒與各語言 Worker 之間的訊息格式 */
-export type WorkerRequest = { type: 'run'; id: number; code: string; call: string };
+export type WorkerRequest = { type: 'run'; id: number; code: string; call: string; maxSteps?: number };
 export type WorkerResponse =
   | { type: 'ready' }
   | { type: 'init-error'; message: string }
@@ -11,6 +11,8 @@ export type WorkerResponse =
 
 /** 單次執行的牆鐘時間上限；超過就砍掉 Worker 重建（MAX_STEPS 擋不住的單行超大運算）。 */
 const RUN_TIMEOUT_MS = 10_000;
+/** 追蹤更多步時放寬逾時：超過預設 500 步的部分每步多 8ms（5,000 步約 46 秒） */
+const timeoutFor = (maxSteps = 500) => RUN_TIMEOUT_MS + Math.max(0, maxSteps - 500) * 8;
 
 type Pending = { resolve: (r: TraceResult) => void; reject: (e: Error) => void; timer: number; background: boolean };
 
@@ -77,7 +79,8 @@ export class WorkerRuntime implements LanguageRuntime {
     else p.reject(new Error(msg.message));
   }
 
-  async run(code: string, call: string, { background = false }: RunOptions = {}): Promise<TraceResult> {
+  async run(code: string, call: string, { background = false, maxSteps }: RunOptions = {}): Promise<TraceResult> {
+    const timeoutMs = timeoutFor(maxSteps);
     await this.ready;
     const id = this.nextId++;
     if (!background) this.setStatus('running');
@@ -92,10 +95,10 @@ export class WorkerRuntime implements LanguageRuntime {
           this.pending.delete(otherId);
         }
         this.spawn();
-        reject(new Error(`Execution took longer than ${RUN_TIMEOUT_MS / 1000}s and was stopped. The ${this.name} runtime is restarting…`));
-      }, RUN_TIMEOUT_MS);
+        reject(new Error(`Execution took longer than ${Math.round(timeoutMs / 1000)}s and was stopped. The ${this.name} runtime is restarting…`));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer, background });
-      this.worker.postMessage({ type: 'run', id, code, call } satisfies WorkerRequest);
+      this.worker.postMessage({ type: 'run', id, code, call, maxSteps } satisfies WorkerRequest);
     });
   }
 }

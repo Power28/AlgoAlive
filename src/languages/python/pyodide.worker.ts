@@ -15,7 +15,7 @@ interface PyodideAPI {
 const ctx = self as unknown as Worker;
 const post = (msg: WorkerResponse) => ctx.postMessage(msg);
 
-let runTrace: ((code: string, call: string) => string) | null = null;
+let runTrace: ((code: string, call: string, maxSteps?: number) => string) | null = null;
 
 async function init() {
   try {
@@ -23,7 +23,7 @@ async function init() {
     const pyodide: PyodideAPI = await mod.loadPyodide({ indexURL: PYODIDE_URL });
     pyodide.runPython(tracerSource);
     const fn = pyodide.globals.get('algoalive_run');
-    runTrace = (code, call) => fn(code, call);
+    runTrace = (code, call, maxSteps) => fn(code, call, maxSteps ?? null);
     post({ type: 'ready' });
   } catch (err) {
     post({ type: 'init-error', message: String(err) });
@@ -38,7 +38,7 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
     return;
   }
   try {
-    post({ type: 'result', id: req.id, json: runTrace(req.code, req.call) });
+    post({ type: 'result', id: req.id, json: runTrace(req.code, req.call, req.maxSteps) });
   } catch (err) {
     post({ type: 'run-error', id: req.id, message: String(err) });
   }
