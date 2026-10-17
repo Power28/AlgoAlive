@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import '../lib/monaco';
 
 type MonacoEditor = Parameters<OnMount>[0];
 type Monaco = Parameters<OnMount>[1];
