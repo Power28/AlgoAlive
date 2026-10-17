@@ -20,7 +20,7 @@ export function Controls({ index, last, playing, speed, disabled, onSeek, onPrev
   const btn =
     'flex size-9 items-center justify-center rounded-md text-ink-300 transition hover:bg-ink-700 hover:text-ink-100 disabled:pointer-events-none disabled:opacity-30';
   return (
-    <div className="flex flex-col gap-2 border-t border-ink-700 bg-ink-850 px-4 py-3">
+    <div className="flex flex-col gap-2 border-t border-ink-700 bg-ink-850 px-4 py-3" data-tour="controls">
       <input
         type="range"
         className="aa-timeline w-full"

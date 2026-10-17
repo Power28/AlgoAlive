@@ -746,6 +746,71 @@ async function testStepLimit(page, url) {
   await openApp(page, url);
 }
 
+async function testTour(page, url) {
+  console.log('Tour');
+  const state = () => page.evaluate(() => ({
+    step: document.querySelector('[data-tour-step]')?.dataset.tourStep ?? null,
+    progress: document.querySelector('[data-tour-progress]')?.textContent.trim() ?? null,
+    playback: document.body.innerText.match(/Step (\d+) \/ (\d+)/)?.[0] ?? null,
+  }));
+  // 第一次打開（沒有存過頁籤）：自動出現導覽
+  const first = await state();
+  record('the tour opens on the first visit', first.step === 'welcome' && first.progress === '1 / 7' ? null : `got ${JSON.stringify(first)}`);
+
+  // 用方向鍵往下走；在「視覺化」那一步按下一步，會先幫使用者執行範例
+  const order = [first.step];
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('ArrowRight');
+    await sleep(250);
+    order.push((await state()).step);
+  }
+  await page.waitForFunction(() => /Step 1 \/ [1-9]\d*/.test(document.body.innerText), { timeout: 30_000 }).catch(() => {});
+  const ran = await state();
+  // 框住的區塊在畫面上，說明卡不會蓋住它
+  const placement = await page.evaluate(() => {
+    const t = document.querySelector('[data-tour="viz"]').getBoundingClientRect();
+    const c = document.querySelector('[data-tour-card]').getBoundingClientRect();
+    return { inView: t.top >= 0 && t.top < innerHeight, cardInView: c.top >= 0 && c.bottom <= innerHeight && c.left >= 0 && c.right <= innerWidth };
+  });
+  record(
+    'the tour walks through the editor, the input and Visualize, then runs the example',
+    order.join(',') === 'welcome,editor,call,run,viz' && ran.playback?.startsWith('Step 1 /') && placement.inView && placement.cardInView
+      ? null
+      : `got ${JSON.stringify({ order, ran, placement })}`,
+  );
+
+  // 導覽開著時，方向鍵只換導覽的步驟，不會移動播放
+  await page.keyboard.press('ArrowRight');
+  await sleep(250);
+  const controls = await state();
+  await page.keyboard.press('ArrowRight');
+  await sleep(250);
+  const learn = await state();
+  record(
+    'arrow keys move the tour, not the playback',
+    controls.step === 'controls' && learn.step === 'learn' && learn.playback === ran.playback ? null : `got ${JSON.stringify({ controls, learn, ran })}`,
+  );
+
+  // 最後一步按「開始使用」關閉，之後重新整理不會再出現；右上角的 ? 可以重看，Esc 關閉
+  await page.click('[data-tour-action="next"]');
+  await sleep(200);
+  const closed = await state();
+  await openApp(page, url);
+  const again = await state();
+  await page.click('[data-action="tour"]');
+  await sleep(300);
+  const replay = await state();
+  await page.keyboard.press('Escape');
+  await sleep(200);
+  const escaped = await state();
+  record(
+    'the tour is shown once and can be replayed from the ? button',
+    closed.step === null && again.step === null && replay.step === 'welcome' && escaped.step === null
+      ? null
+      : `got ${JSON.stringify({ closed, again, replay, escaped })}`,
+  );
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -774,6 +839,7 @@ try {
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
   await openApp(page, server.url);
 
+  await testTour(page, server.url);
   await testTabs(page, server.url);
   await testLanguage(page);
   await testCondition(page);
