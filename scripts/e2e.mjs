@@ -768,6 +768,8 @@ const browser = await launchBrowser({ defaultViewport: { width: 1440, height: 86
 const consoleErrors = [];
 try {
   const page = await browser.newPage();
+  // 不跟著作業系統的「減少動態效果」設定：示範動畫要自動播放
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
   await openApp(page, server.url);
@@ -792,6 +794,18 @@ try {
   await testDemo(page);
   await testExamples(page, expected);
   await testStepLimit(page, server.url);
+
+  console.log('Security');
+  // Monaco 從本地打包載入（不從 CDN 下載），頁面帶有 CSP；違反 CSP 會出現在下面的 console 錯誤
+  const security = await page.evaluate(() => ({
+    csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content') ?? '',
+    cdnMonaco: performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('monaco-editor')),
+    editor: !!document.querySelector('.monaco-editor'),
+  }));
+  record(
+    'Monaco is bundled locally and the page has a CSP',
+    /script-src 'self'/.test(security.csp) && !security.cdnMonaco.length && security.editor ? null : `got ${JSON.stringify(security)}`,
+  );
 
   console.log('Console');
   record('no console errors', consoleErrors.length ? consoleErrors.slice(0, 5).join(' | ') : null);

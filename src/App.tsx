@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BookOpen, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
-import { CodeEditor } from './components/CodeEditor';
 import { Controls } from './components/Controls';
 import { Library } from './components/Library';
 import { TabBar } from './components/TabBar';
@@ -10,6 +9,9 @@ import { usePlayback } from './hooks/usePlayback';
 import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
 import { useLang, useT } from './i18n';
 import { computeCellKeys, computeGridKeys } from './lib/cellKeys';
+
+// Monaco 很大（本地打包約 4 MB）：另外拆成一個檔案，頁面先出現，編輯器再載入
+const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
@@ -256,17 +258,19 @@ export default function App() {
 
           <div className={leftMode === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
             <div className="min-h-0 flex-1">
-              <CodeEditor
-                path={active.id}
-                language={language.monaco}
-                value={active.code}
-                onChange={(v) => editActive({ code: v })}
-                currentLine={step?.lineNumber}
-                prevLine={prevStep?.lineNumber}
-                errorLine={errorLine}
-                hint={stale ? undefined : lineHint(step, language.format)}
-                onRun={visualize}
-              />
+              <Suspense fallback={<div className="flex h-full items-center justify-center text-ink-400"><Loader2 className="size-5 animate-spin" /></div>}>
+                <CodeEditor
+                  path={active.id}
+                  language={language.monaco}
+                  value={active.code}
+                  onChange={(v) => editActive({ code: v })}
+                  currentLine={step?.lineNumber}
+                  prevLine={prevStep?.lineNumber}
+                  errorLine={errorLine}
+                  hint={stale ? undefined : lineHint(step, language.format)}
+                  onRun={visualize}
+                />
+              </Suspense>
             </div>
             <div className="border-t border-ink-700 p-3">
               <label className="mb-1.5 block text-[11px] tracking-wide text-ink-400 uppercase">{t('testCall')}</label>
