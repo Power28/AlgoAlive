@@ -6,6 +6,47 @@ export type L = { en: string; zh: string };
 
 const STRINGS = {
   slogan: { en: 'Bring your LeetCode algorithms to life', zh: '讓你的 LeetCode 演算法動起來' },
+  tourWelcomeTitle: { en: 'Welcome to AlgoAlive', zh: '歡迎來到 AlgoAlive' },
+  tourWelcomeBody: {
+    en: 'Paste your solution, and watch it run one step at a time: pointers move across arrays, nodes get relinked, and every line explains what it just did. A quick tour takes about 30 seconds.',
+    zh: '貼上你的解法，就能一步一步看它執行：指針在陣列上移動、節點重新連接，每一行都會說明它做了什麼。快速導覽大約 30 秒。',
+  },
+  tourEditorTitle: { en: '1. Write your code', zh: '1. 寫下你的程式' },
+  tourEditorBody: {
+    en: 'Write or paste a solution here, in Python or JavaScript (switch with Language above). Each tab keeps its own code, saved in your browser.',
+    zh: '在這裡寫下或貼上解法，可以用 Python 或 JavaScript（用上方的「語言」切換）。每個頁籤各自保存程式碼，會自動存在瀏覽器裡。',
+  },
+  tourCallTitle: { en: '2. Choose the input', zh: '2. 填入測資' },
+  tourCallBody: {
+    en: "Call your function with the input to test. You can paste LeetCode's example input as is (nums = [2,7,11,15], target = 9) — lists become linked lists or trees automatically.",
+    zh: '用想測試的輸入呼叫你的函式。可以直接貼上 LeetCode 範例的輸入（nums = [2,7,11,15], target = 9），陣列會自動轉成鏈結串列或二元樹。',
+  },
+  tourRunTitle: { en: '3. Visualize', zh: '3. 開始視覺化' },
+  tourRunBody: {
+    en: 'Press Visualize (or Ctrl+Enter in the editor) to run the code. Press Next and we will run this example for you.',
+    zh: '按「視覺化」（或在編輯器裡按 Ctrl+Enter）執行程式。按「下一步」，我們先幫你執行這個範例。',
+  },
+  tourVizTitle: { en: '4. Watch every step', zh: '4. 看每一步發生什麼事' },
+  tourVizBody: {
+    en: 'Variables, arrays with their pointers, linked lists, trees and dicts are drawn here. The cards at the top explain the current line: which condition is checked, what gets calculated, which loop round it is.',
+    zh: '變數、陣列與指針、鏈結串列、樹、字典都畫在這裡。上方的卡片說明目前這一行：比較了什麼條件、算出什麼值、迴圈跑到第幾圈。',
+  },
+  tourControlsTitle: { en: '5. Play it back', zh: '5. 播放控制' },
+  tourControlsBody: {
+    en: 'Play, step forward or back, or drag the timeline. Keyboard: ← → to step, Space to play or pause, Home / End to jump to the start or end.',
+    zh: '播放、上一步 / 下一步，或拖曳時間軸。鍵盤：← → 逐步、空白鍵播放或暫停、Home / End 跳到開頭或結尾。',
+  },
+  tourLearnTitle: { en: 'Not sure where to start?', zh: '不知道從哪裡開始？' },
+  tourLearnBody: {
+    en: 'Learn covers common patterns — two pointers, sliding window, BFS, DP… — each with examples you can open in a new tab. Reopen this tour anytime with the ? button.',
+    zh: '「演算法教學」整理了常見題型：雙指針、滑動視窗、BFS、動態規劃⋯⋯每一種都有可以直接開啟的範例。之後隨時可以按右上角的 ? 重看這個導覽。',
+  },
+  tourStart: { en: 'Start the tour', zh: '開始導覽' },
+  tourNext: { en: 'Next', zh: '下一步' },
+  tourBack: { en: 'Back', zh: '上一步' },
+  tourDone: { en: 'Start coding', zh: '開始使用' },
+  tourSkip: { en: 'Skip', zh: '略過' },
+  tourReplay: { en: 'Show the tour again', zh: '重看導覽' },
   code: { en: 'Code', zh: '程式碼' },
   guide: { en: 'Guide', zh: '教學' },
   testCall: { en: 'Test call', zh: '測試呼叫' },

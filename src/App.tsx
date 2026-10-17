@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { BookOpen, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
+import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
 import { Controls } from './components/Controls';
 import { Library } from './components/Library';
 import { TabBar } from './components/TabBar';
@@ -10,8 +10,6 @@ import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
 import { useLang, useT } from './i18n';
 import { computeCellKeys, computeGridKeys } from './lib/cellKeys';
 
-// Monaco 很大（本地打包約 4 MB）：另外拆成一個檔案，頁面先出現，編輯器再載入
-const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
 import { infoSlotHeight } from './lib/infoSlot';
 import { contextInfo } from './lib/context';
 import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
@@ -24,6 +22,11 @@ import { getLanguage, LANGUAGES, type LanguageId } from './languages';
 import type { RuntimeStatus } from './languages/types';
 import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
+import { Tour, type TourStep } from './components/Tour';
+import { useTour } from './hooks/useTour';
+
+// Monaco 很大（本地打包約 4 MB）：另外拆成一個檔案，頁面先出現，編輯器再載入
+const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
 
 /** 每個頁籤各自的執行結果（只存在記憶體中） */
 interface Run {
@@ -59,6 +62,7 @@ export default function App() {
   const [statusDetail, setStatusDetail] = useState<string>();
   const [leftMode, setLeftMode] = useState<'code' | 'guide'>('code');
   const [library, setLibrary] = useState<{ topicId?: string } | null>(null);
+  const tour = useTour();
 
   useEffect(
     () =>
@@ -106,6 +110,31 @@ export default function App() {
   }, [active, runtime]);
   const visualize = useCallback(() => runWith(active.call), [runWith, active.call]);
 
+  // 導覽要介紹的區塊都在「程式碼」模式；開始時關掉教學視窗
+  const startTour = () => {
+    setLibrary(null);
+    setLeftMode('code');
+    tour.start();
+  };
+  const tourSteps: TourStep[] = [
+    { id: 'welcome', title: 'tourWelcomeTitle', body: 'tourWelcomeBody' },
+    { id: 'editor', target: '[data-tour="editor"]', title: 'tourEditorTitle', body: 'tourEditorBody' },
+    { id: 'call', target: '[data-tour="call"]', title: 'tourCallTitle', body: 'tourCallBody' },
+    {
+      id: 'run',
+      target: '[data-action="visualize"]',
+      title: 'tourRunTitle',
+      body: 'tourRunBody',
+      // 先替使用者執行一次，下一步就有動畫可看
+      onNext: () => {
+        if (status === 'ready' && !run?.trace) void visualize();
+      },
+    },
+    { id: 'viz', target: '[data-tour="viz"]', title: 'tourVizTitle', body: 'tourVizBody' },
+    { id: 'controls', target: '[data-tour="controls"]', title: 'tourControlsTitle', body: 'tourControlsBody' },
+    { id: 'learn', target: '[data-action="library"]', title: 'tourLearnTitle', body: 'tourLearnBody' },
+  ];
+
   const editActive = (patch: { code?: string; call?: string }) => {
     update(active.id, patch);
   };
@@ -138,7 +167,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (library || el.closest('input, textarea, button, .monaco-editor') || !steps.length) return;
+      if (library || tour.open || el.closest('input, textarea, button, .monaco-editor') || !steps.length) return;
       if (e.key === 'ArrowRight') playback.next();
       else if (e.key === 'ArrowLeft') playback.prev();
       else if (e.key === ' ') playback.togglePlay();
@@ -149,7 +178,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [playback, steps.length, library]);
+  }, [playback, steps.length, library, tour.open]);
 
   const busy = status === 'loading' || status === 'running';
   const error = trace?.error;
@@ -192,6 +221,15 @@ export default function App() {
           >
             <BookOpen size={14} />
             <span className="hidden sm:inline">{t('learn')}</span>
+          </button>
+          <button
+            onClick={startTour}
+            className="flex items-center rounded-md p-1.5 text-ink-300 transition hover:bg-ink-700 hover:text-ink-100"
+            title={t('tourReplay')}
+            aria-label={t('tourReplay')}
+            data-action="tour"
+          >
+            <CircleHelp size={16} />
           </button>
           <button
             onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
@@ -257,7 +295,7 @@ export default function App() {
           )}
 
           <div className={leftMode === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1" data-tour="editor">
               <Suspense fallback={<div className="flex h-full items-center justify-center text-ink-400"><Loader2 className="size-5 animate-spin" /></div>}>
                 <CodeEditor
                   path={active.id}
@@ -272,7 +310,7 @@ export default function App() {
                 />
               </Suspense>
             </div>
-            <div className="border-t border-ink-700 p-3">
+            <div className="border-t border-ink-700 p-3" data-tour="call">
               <label className="mb-1.5 block text-[11px] tracking-wide text-ink-400 uppercase">{t('testCall')}</label>
               <div className="flex gap-2">
                 <input
@@ -308,7 +346,7 @@ export default function App() {
         </section>
 
         {/* 右：動畫 */}
-        <section className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-850">
+        <section className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-ink-700 bg-ink-850" data-tour="viz">
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-ink-700 px-4 text-xs font-semibold tracking-wide text-ink-100 uppercase">
             {t('visualization')}
             {stale && (
@@ -421,6 +459,7 @@ export default function App() {
       </main>
 
       {library && <Library initialTopicId={library.topicId} onClose={() => setLibrary(null)} onOpenExample={openExample} />}
+      {tour.open && <Tour steps={tourSteps} onClose={tour.close} />}
     </div>
   );
 }
