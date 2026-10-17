@@ -1,9 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
 import { Controls } from './components/Controls';
-import { Library } from './components/Library';
 import { TabBar } from './components/TabBar';
-import { TutorialView } from './components/TutorialView';
+import { CodePreview } from './components/CodePreview';
 import { Visualizer } from './components/Visualizer';
 import { usePlayback } from './hooks/usePlayback';
 import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
@@ -25,8 +24,16 @@ import type { TraceResult } from './types';
 import { Tour, type TourStep } from './components/Tour';
 import { useTour } from './hooks/useTour';
 
-// Monaco 很大（本地打包約 4 MB）：另外拆成一個檔案，頁面先出現，編輯器再載入
+// Monaco 很大（本地打包約 3 MB）：另外拆成一個檔案，下載時先用純文字顯示程式碼（build 時以 modulepreload 和主程式同時下載）
 const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
+// 教學視窗與教學頁：打開時才載入
+const Library = lazy(() => import('./components/Library').then((m) => ({ default: m.Library })));
+const TutorialView = lazy(() => import('./components/TutorialView').then((m) => ({ default: m.TutorialView })));
+const spinner = (
+  <div className="flex h-full items-center justify-center text-ink-400">
+    <Loader2 className="size-5 animate-spin" />
+  </div>
+);
 
 /** 每個頁籤各自的執行結果（只存在記憶體中） */
 interface Run {
@@ -274,11 +281,13 @@ export default function App() {
           {leftMode === 'guide' && (
             <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
               {tutorial ? (
-                <TutorialView
-                  tutorial={tutorial}
-                  currentExampleId={active.exampleId}
-                  onOpenExample={(ex) => openExample(ex, tutorial)}
-                />
+                <Suspense fallback={spinner}>
+                  <TutorialView
+                    tutorial={tutorial}
+                    currentExampleId={active.exampleId}
+                    onOpenExample={(ex) => openExample(ex, tutorial)}
+                  />
+                </Suspense>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-ink-400">
                   <BookOpen size={28} className="text-ink-600" />
@@ -296,7 +305,7 @@ export default function App() {
 
           <div className={leftMode === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
             <div className="min-h-0 flex-1" data-tour="editor">
-              <Suspense fallback={<div className="flex h-full items-center justify-center text-ink-400"><Loader2 className="size-5 animate-spin" /></div>}>
+              <Suspense fallback={<CodePreview code={active.code} />}>
                 <CodeEditor
                   path={active.id}
                   language={language.monaco}
@@ -458,7 +467,11 @@ export default function App() {
         </section>
       </main>
 
-      {library && <Library initialTopicId={library.topicId} onClose={() => setLibrary(null)} onOpenExample={openExample} />}
+      {library && (
+        <Suspense fallback={null}>
+          <Library initialTopicId={library.topicId} onClose={() => setLibrary(null)} onOpenExample={openExample} />
+        </Suspense>
+      )}
       {tour.open && <Tour steps={tourSteps} onClose={tour.close} />}
     </div>
   );

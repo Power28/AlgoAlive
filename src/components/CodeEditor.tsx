@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import '../lib/monaco';
+import { CodePreview } from './CodePreview';
 
 type MonacoEditor = Parameters<OnMount>[0];
 type Monaco = Parameters<OnMount>[1];
@@ -95,7 +96,7 @@ export function CodeEditor({ path, language, value, onChange, currentLine, prevL
       onChange={(v) => onChange(v ?? '')}
       beforeMount={defineTheme}
       onMount={handleMount}
-      loading={<div className="p-4 text-sm text-ink-400">Loading editor…</div>}
+      loading={<CodePreview code={value} />}
       options={{
         fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace",

@@ -746,6 +746,20 @@ async function testStepLimit(page, url) {
   await openApp(page, url);
 }
 
+async function testInitialLoad(page) {
+  console.log('Initial load');
+  // 首頁：編輯器以 modulepreload 和主程式同時下載；教學視窗、教學頁要打開時才載入
+  const load = await page.evaluate(() => ({
+    preload: [...document.querySelectorAll('link[rel="modulepreload"]')].some((l) => /CodeEditor-/.test(l.getAttribute('href'))),
+    files: performance.getEntriesByType('resource').map((e) => e.name.split('/').pop()),
+  }));
+  const loaded = (name) => load.files.some((f) => f.startsWith(`${name}-`));
+  record(
+    'the editor is preloaded and the tutorials load on demand',
+    load.preload && loaded('CodeEditor') && !loaded('Library') && !loaded('TutorialView') ? null : `got ${JSON.stringify(load)}`,
+  );
+}
+
 async function testTour(page, url) {
   console.log('Tour');
   const state = () => page.evaluate(() => ({
@@ -839,6 +853,7 @@ try {
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
   await openApp(page, server.url);
 
+  await testInitialLoad(page);
   await testTour(page, server.url);
   await testTabs(page, server.url);
   await testLanguage(page);
