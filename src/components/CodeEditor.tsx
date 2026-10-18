@@ -21,6 +21,9 @@ interface Props {
   /** 目前行的行尾提示：條件式 "0 < 6 → True"、計算 "(0 + 7) // 2 → 3" */
   hint?: { text: string; tone: 'true' | 'false' | 'unknown' | 'calc' };
   onRun: () => void;
+  /** 執行過的行：點行號跳到下一次執行這一行（hover 顯示說明）；動畫是舊的時候不傳 */
+  jumpLines?: Map<number, string>;
+  onLineJump?: (line: number, dir: 1 | -1) => void;
 }
 
 const defineTheme: BeforeMount = (monaco) => {
@@ -38,18 +41,36 @@ const defineTheme: BeforeMount = (monaco) => {
   });
 };
 
-export function CodeEditor({ path, language, value, onChange, currentLine, prevLine, errorLine, hint, onRun }: Props) {
+export function CodeEditor({ path, language, value, onChange, currentLine, prevLine, errorLine, hint, onRun, jumpLines, onLineJump }: Props) {
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const decorations = useRef<ReturnType<MonacoEditor['createDecorationsCollection']> | null>(null);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
+  const jumpRef = useRef({ jumpLines, onLineJump });
+  jumpRef.current = { jumpLines, onLineJump };
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     decorations.current = editor.createDecorationsCollection();
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRunRef.current());
+    // 點行號：跳到下一次執行這一行（Shift：上一次）。
+    // Monaco 點行號時會選取整行：跳轉用的點擊放開後把選取收起來
+    let gutterJump: number | null = null;
+    editor.onMouseDown((e) => {
+      const line = e.target.position?.lineNumber;
+      const { jumpLines: lines, onLineJump: jump } = jumpRef.current;
+      if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS || !line || !lines?.has(line) || !jump) return;
+      e.event.preventDefault();
+      jump(line, e.event.shiftKey ? -1 : 1);
+      gutterJump = line;
+    });
+    editor.onMouseUp(() => {
+      if (gutterJump === null) return;
+      editor.setPosition({ lineNumber: gutterJump, column: 1 });
+      gutterJump = null;
+    });
     applyDecorations();
   };
 
@@ -65,6 +86,12 @@ export function CodeEditor({ path, language, value, onChange, currentLine, prevL
     if (prevLine && prevLine !== currentLine) list.push(lineDeco(prevLine, 'aa-prev-line'));
     if (currentLine) list.push(lineDeco(currentLine, 'aa-current-line', 'aa-glyph-current'));
     if (errorLine) list.push(lineDeco(errorLine, 'aa-error-line'));
+    for (const [line, text] of jumpLines ?? []) {
+      list.push({
+        range: new monaco.Range(line, 1, line, 1),
+        options: { lineNumberClassName: 'aa-line-jump', lineNumberHoverMessage: { value: text } },
+      });
+    }
     const model = editor.getModel();
     if (hint && currentLine && model && currentLine <= model.getLineCount()) {
       const end = model.getLineMaxColumn(currentLine);
@@ -85,7 +112,7 @@ export function CodeEditor({ path, language, value, onChange, currentLine, prevL
     if (focus) editor.revealLineInCenterIfOutsideViewport(focus);
   };
 
-  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine, hint?.text, hint?.tone]);
+  useEffect(applyDecorations, [path, currentLine, prevLine, errorLine, hint?.text, hint?.tone, jumpLines]);
 
   return (
     <Editor

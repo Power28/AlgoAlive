@@ -33,14 +33,23 @@ const STRINGS = {
   },
   tourControlsTitle: { en: '5. Play it back', zh: '5. 播放控制' },
   tourControlsBody: {
-    en: 'Play, step forward or back, or drag the timeline. Keyboard: ← → to step, Space to play or pause, Home / End to jump to the start or end.',
-    zh: '播放、上一步 / 下一步，或拖曳時間軸。鍵盤：← → 逐步、空白鍵播放或暫停、Home / End 跳到開頭或結尾。',
+    en: 'Play, step forward or back, or drag the timeline. Keyboard: ← → to step, Space to play or pause, Home / End to jump to the start or end. Click a line number to jump to the next time that line runs, or a variable name to jump to its next change.',
+    zh: '播放、上一步 / 下一步，或拖曳時間軸。鍵盤：← → 逐步、空白鍵播放或暫停、Home / End 跳到開頭或結尾。點行號可以跳到下一次執行這一行，點變數名稱可以跳到它下一次改變。',
   },
   tourLearnTitle: { en: 'Not sure where to start?', zh: '不知道從哪裡開始？' },
   tourLearnBody: {
     en: 'Learn covers common patterns — two pointers, sliding window, BFS, DP… — each with examples you can open in a new tab. Reopen this tour anytime with the ? button.',
     zh: '「演算法教學」整理了常見題型：雙指針、滑動視窗、BFS、動態規劃⋯⋯每一種都有可以直接開啟的範例。之後隨時可以按右上角的 ? 重看這個導覽。',
   },
+  varJumpHint: {
+    en: '{name} changes {n} times — click to jump to the next change (Shift+click: the previous one)',
+    zh: '{name} 改變了 {n} 次：點一下跳到下一次改變（Shift + 點：上一次）',
+  },
+  lineJumpHint: {
+    en: 'Line {line} runs {n} times — click the line number to jump to the next time (Shift+click: the previous one)',
+    zh: '第 {line} 行執行了 {n} 次：點行號跳到下一次（Shift + 點：上一次）',
+  },
+  visitOf: { en: 'run {k} / {n}', zh: '第 {k} / {n} 次' },
   tourStart: { en: 'Start the tour', zh: '開始導覽' },
   tourNext: { en: 'Next', zh: '下一步' },
   tourBack: { en: 'Back', zh: '上一步' },

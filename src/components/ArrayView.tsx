@@ -6,6 +6,7 @@ import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 import { isGap } from '../lib/sparse';
 import { useT } from '../i18n';
+import { VarName } from './VarName';
 
 const MIN_CELL = 48;
 const MAX_CELL = 120;
@@ -235,7 +236,7 @@ export function ArrayView({ name, kind, items, truncated, keys, prevItems, point
 export function Header({ name, kind, meta }: { name: string; kind: string; meta?: string }) {
   return (
     <div className="mb-2 flex items-baseline gap-2">
-      <span className="font-mono text-sm font-semibold text-ink-100">{name}</span>
+      <VarName name={name} className="font-mono text-sm font-semibold text-ink-100" />
       <span className="rounded bg-ink-700 px-1.5 py-px font-mono text-[10px] text-ink-300">{kind}</span>
       {meta && <span className="font-mono text-[11px] text-ink-400">{meta}</span>}
     </div>

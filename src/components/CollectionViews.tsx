@@ -3,6 +3,7 @@ import type { DictValue, Value, SequenceValue } from '../types';
 import { formatValue, typeLabel, valueKey } from '../lib/value';
 import { useT } from '../i18n';
 import { Header } from './ArrayView';
+import { VarName } from './VarName';
 import { useHeap, useValueFormat } from '../lib/heapContext';
 import { markOutline } from '../lib/stepMarks';
 
@@ -190,7 +191,7 @@ export function ScalarGrid({ entries, prevVars, pointerColors, compared, written
             >
               <div className="flex items-center gap-1.5 bg-ink-700 px-2 py-1 text-ink-300">
                 {color && <span className="size-2 rounded-full" style={{ backgroundColor: color }} />}
-                {name}
+                <VarName name={name} />
               </div>
               <motion.div
                 key={text}

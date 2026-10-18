@@ -110,3 +110,12 @@ input[type='range'].aa-timeline {
     box-shadow: 0 0 0 2px rgba(255, 161, 22, 0.7);
   }
 }
+
+/* 執行過的行號可以點：跳到下一次執行這一行 */
+.monaco-editor .line-numbers.aa-line-jump {
+  cursor: pointer;
+}
+.monaco-editor .line-numbers.aa-line-jump:hover {
+  color: var(--color-brand) !important;
+  text-decoration: underline dotted;
+}

@@ -825,6 +825,57 @@ async function testTour(page, url) {
   );
 }
 
+async function testStepJump(page) {
+  console.log('Step search');
+  // 預設頁籤（167. 兩數之和 II）已經在導覽中執行過
+  await page.click('[data-action="visualize"]');
+  await page.waitForFunction(() => /Step 1 \/ [1-9]\d*/.test(document.body.innerText), { timeout: 30_000 });
+  const state = () => page.evaluate(() => ({
+    step: Number(document.body.innerText.match(/Step (\d+) \//)?.[1]),
+    chip: document.querySelector('[data-visit]')?.textContent.trim() ?? null,
+    right: [...document.querySelectorAll('main section')].map((el) => el.innerText).join(' ').match(/right\s+(\d+)/)?.[1] ?? null,
+    selection: !!document.querySelector('.monaco-editor .selected-text'),
+  }));
+  await page.waitForSelector('.monaco-editor .line-numbers.aa-line-jump');
+  const lineNumber = async (n, shift = false) => {
+    // Monaco 換步驟時會重畫行號：用座標點，不要拿著元素
+    const at = await page.evaluate((n) => {
+      const el = [...document.querySelectorAll('.monaco-editor .line-numbers.aa-line-jump')].find((x) => x.textContent.trim() === String(n));
+      const r = el?.getBoundingClientRect();
+      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+    }, n);
+    if (!at) return { missing: n };
+    if (shift) await page.keyboard.down('Shift');
+    await page.mouse.click(at.x, at.y);
+    if (shift) await page.keyboard.up('Shift');
+    await sleep(300);
+    return state();
+  };
+  // 點行號：跳到下一次執行第 7 行；再點一次是下一次；Shift + 點回到上一次
+  const a = await lineNumber(7);
+  const b = await lineNumber(7);
+  const c = await lineNumber(7, true);
+  record(
+    'clicking a line number jumps to the next time the line runs',
+    a.chip === 'run 1 / 5' && b.chip === 'run 2 / 5' && b.step > a.step && c.chip === 'run 1 / 5' && c.step === a.step && !a.selection
+      ? null
+      : `got ${JSON.stringify({ a, b, c })}`,
+  );
+
+  // 點變數名稱：跳到 right 下一次改變（值和上一次看到的不同）
+  // 變數改變的步驟在畫面畫出後才算，算好才變成可以點的名稱
+  await page.waitForSelector('[data-var-jump="right"]');
+  const before = await state();
+  await page.click('[data-var-jump="right"]');
+  await sleep(300);
+  const after = await state();
+  const title = await page.$eval('[data-var-jump="right"]', (el) => el.title);
+  record(
+    'clicking a variable name jumps to its next change',
+    after.step > before.step && after.right !== before.right && /right changes \d+ times/.test(title) ? null : `got ${JSON.stringify({ before, after, title })}`,
+  );
+}
+
 async function testLanguage(page) {
   console.log('Language');
   await page.click('[data-action="lang"]');
@@ -855,6 +906,7 @@ try {
 
   await testInitialLoad(page);
   await testTour(page, server.url);
+  await testStepJump(page);
   await testTabs(page, server.url);
   await testLanguage(page);
   await testCondition(page);
