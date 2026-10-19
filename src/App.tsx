@@ -23,6 +23,7 @@ import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
 import { Tour, type TourStep } from './components/Tour';
 import { useTour } from './hooks/useTour';
+import { useServiceWorker } from './hooks/useServiceWorker';
 import { changeSteps, lineVisits, nearest, visitNumber, VarJumpContext, type VarJump } from './lib/stepSearch';
 
 // Monaco 很大（本地打包約 3 MB）：另外拆成一個檔案，下載時先用純文字顯示程式碼（build 時以 modulepreload 和主程式同時下載）
@@ -71,6 +72,7 @@ export default function App() {
   const [leftMode, setLeftMode] = useState<'code' | 'guide'>('code');
   const [library, setLibrary] = useState<{ topicId?: string } | null>(null);
   const tour = useTour();
+  const sw = useServiceWorker();
 
   useEffect(
     () =>
@@ -512,6 +514,16 @@ export default function App() {
         </Suspense>
       )}
       {tour.open && <Tour steps={tourSteps} onClose={tour.close} />}
+      {sw.updateReady && (
+        // 新版本已在背景下載好：按下更新才切換（重新整理頁面）
+        <div className="fixed right-4 bottom-4 z-40 flex items-center gap-3 rounded-lg border border-brand/40 bg-ink-850 px-4 py-3 text-sm shadow-2xl" role="status" data-update-ready>
+          <RefreshCw size={16} className="shrink-0 text-brand" />
+          <span className="text-ink-100">{t('updateReady')}</span>
+          <button onClick={sw.update} className="rounded-md bg-brand px-3 py-1 text-xs font-semibold text-ink-950 transition hover:brightness-110" data-action="update">
+            {t('updateNow')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

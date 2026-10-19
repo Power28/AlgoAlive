@@ -1,4 +1,7 @@
-import { defineConfig, type Plugin } from 'vite';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { defineConfig, type Plugin, type ResolvedConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -49,10 +52,55 @@ const csp = (): Plugin => ({
   transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }],
 });
 
+/**
+ * Service Worker（public/sw.js）：build 完成後填入要預先存起來的檔案清單與版本號。
+ * 版本號由所有檔案的內容算出，網站有任何改變就會換新的快取。
+ */
+/** Pyodide 的版本號以 pyodide.worker.ts 為準 */
+const pyodideVersion = (root: string) => {
+  const src = fs.readFileSync(path.join(root, 'src/languages/python/pyodide.worker.ts'), 'utf8');
+  const m = src.match(/PYODIDE_VERSION = '([\d.]+)'/);
+  if (!m) throw new Error('PYODIDE_VERSION not found in pyodide.worker.ts');
+  return m[1];
+};
+
+const serviceWorker = (): Plugin => {
+  let config: ResolvedConfig;
+  return {
+    name: 'algoalive-service-worker',
+    apply: 'build',
+    configResolved: (c) => void (config = c),
+    closeBundle() {
+      const out = path.resolve(config.root, config.build.outDir);
+      const swPath = path.join(out, 'sw.js');
+      if (!fs.existsSync(swPath)) return;
+      const files: string[] = [];
+      const walk = (dir: string) => {
+        for (const name of fs.readdirSync(dir)) {
+          const full = path.join(dir, name);
+          if (fs.statSync(full).isDirectory()) walk(full);
+          else files.push(path.relative(out, full).split(path.sep).join('/'));
+        }
+      };
+      walk(out);
+      const precache = files.filter((f) => f !== 'sw.js' && !f.endsWith('.map')).sort();
+      const hash = createHash('sha256');
+      for (const f of precache) hash.update(f).update(fs.readFileSync(path.join(out, f)));
+      const urls = ['./', ...precache.map((f) => `./${f}`)];
+      const sw = fs
+        .readFileSync(swPath, 'utf8')
+        .replace("'__BUILD_ID__'", JSON.stringify(hash.digest('hex').slice(0, 12)))
+        .replace('/* __PRECACHE__ */ []', JSON.stringify(urls))
+        .replace('__PYODIDE_VERSION__', pyodideVersion(config.root));
+      fs.writeFileSync(swPath, sw);
+    },
+  };
+};
+
 export default defineConfig({
   // 相對路徑，方便直接部署到 GitHub Pages 等任意子路徑
   base: './',
-  plugins: [react(), tailwindcss(), csp(), preloadEditor()],
+  plugins: [react(), tailwindcss(), csp(), preloadEditor(), serviceWorker()],
   // Worker 需使用 ES module 格式，才能動態 import Pyodide CDN 的 pyodide.mjs
   worker: { format: 'es' },
 });
