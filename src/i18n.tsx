@@ -98,6 +98,8 @@ const STRINGS = {
   depth: { en: 'depth {n}', zh: '深度 {n}' },
   line: { en: 'line {n}', zh: '第 {n} 行' },
   staleCode: { en: 'The code has changed', zh: '程式碼已修改' },
+  updateReady: { en: 'A new version of AlgoAlive is ready', zh: 'AlgoAlive 有新版本' },
+  updateNow: { en: 'Update', zh: '更新' },
   staleCall: { en: 'The test call has changed', zh: '測資已修改' },
   staleBoth: { en: 'The code and the test call have changed', zh: '程式碼和測資都已修改' },
   staleDetail: { en: 'The animation below is from the previous run. Visualize again to see the new one.', zh: '下面的動畫是上一次執行的結果，重新視覺化才會看到新的。' },
