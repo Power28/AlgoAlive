@@ -874,6 +874,17 @@ async function testStepJump(page) {
     'clicking a variable name jumps to its next change',
     after.step > before.step && after.right !== before.right && /right changes \d+ times/.test(title) ? null : `got ${JSON.stringify({ before, after, title })}`,
   );
+
+  // 播放的鍵盤快捷鍵（焦點不在輸入框、按鈕或編輯器時）：End 最後一步、Home 第一步、→ 下一步
+  await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : null));
+  const total = await page.evaluate(() => Number(document.body.innerText.match(/Step \d+ \/ (\d+)/)?.[1]));
+  const keys = [];
+  for (const key of ['End', 'Home', 'ArrowRight']) {
+    await page.keyboard.press(key);
+    await sleep(200);
+    keys.push((await state()).step);
+  }
+  record('the playback keyboard shortcuts move between steps', keys.join(',') === `${total},1,2` ? null : `got ${keys} of ${total}`);
 }
 
 async function testOffline(browser, url) {
