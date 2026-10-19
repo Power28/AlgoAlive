@@ -3,6 +3,7 @@
 //   node scripts/check_js.mjs   （或 npm run test:js）
 import { MAX_STEPS, traceJs } from '../src/languages/javascript/tracer.ts';
 import { fmt, loadJsExamples } from './js_examples.mjs';
+import { changeSteps, lineVisits, nearest, visitNumber } from '../src/lib/stepSearch.ts';
 
 const results = [];
 function check(name, fn) {
@@ -176,6 +177,23 @@ check('large maps, sets and objects send the entries matching a variable', () =>
   const last = big.steps.at(-1).variables;
   if (last.s?.length !== 300 || !last.s.index.includes(150)) return `set ${last.s?.length} / ${last.s?.index}`;
   if (last.o?.length !== 200 || !last.o.entries.some(([k]) => k.value === '150')) return `object ${last.o?.length}`;
+});
+
+check('step search finds the runs of a line and the changes of a variable', () => {
+  const r = traceJs('function f(n) {\n  let t = 0;\n  for (let i = 0; i < n; i++) {\n    t += i;\n  }\n  return t;\n}', 'f(4)');
+  const visits = lineVisits(r.steps).get(4) ?? [];
+  if (visits.length !== 4) return `line 4 should run 4 times: ${visits}`;
+  // 往後找、往前找，走到底從另一端繞回來
+  if (nearest(visits, visits[1], 1) !== visits[2] || nearest(visits, visits[1], -1) !== visits[0]) return 'nearest run';
+  if (nearest(visits, visits[3], 1) !== visits[0] || nearest(visits, visits[0], -1) !== visits[3]) return 'nearest should wrap around';
+  if (visitNumber(visits, visits[2]) !== 3) return 'visit number';
+  // t：出現（0）→ 0 + 0 沒變 → 1 → 3 → 6
+  const t = changeSteps(r.steps, 't').map((i) => int(r.steps[i].variables.t));
+  if (JSON.stringify(t) !== '[0,1,3,6]') return `changes of t ${JSON.stringify(t)}`;
+  // 指向節點的變數：指向同一個節點，但走得到的節點被修改也算改變
+  const list = traceJs('function f(head) {\n  const first = head;\n  head.next.val = 9;\n  return first;\n}', 'f([1, 2, 3])');
+  const first = changeSteps(list.steps, 'first');
+  if (first.length !== 2) return `first should change when a node it reaches changes: ${first}`;
 });
 
 check('syntax and runtime errors report the line', () => {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
 import { Controls } from './components/Controls';
 import { TabBar } from './components/TabBar';
@@ -23,6 +23,7 @@ import { getTutorial, type Example, type Tutorial } from './tutorials';
 import type { TraceResult } from './types';
 import { Tour, type TourStep } from './components/Tour';
 import { useTour } from './hooks/useTour';
+import { changeSteps, lineVisits, nearest, visitNumber, VarJumpContext, type VarJump } from './lib/stepSearch';
 
 // Monaco 很大（本地打包約 3 MB）：另外拆成一個檔案，下載時先用純文字顯示程式碼（build 時以 modulepreload 和主程式同時下載）
 const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
@@ -103,6 +104,33 @@ export default function App() {
   const step = steps[playback.index];
   const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
   const tutorial = getTutorial(active.tutorialId);
+
+  // 步驟搜尋：點行號跳到下一次執行這一行、點變數名稱跳到它下一次改變（跳轉時停止播放）
+  const visits = useMemo(() => lineVisits(steps), [steps]);
+  const { setPlaying, seek } = playback;
+  const jumpTo = useCallback((i: number | null) => {
+    if (i === null) return;
+    setPlaying(false);
+    seek(i);
+  }, [setPlaying, seek]);
+  const indexRef = useRef(playback.index);
+  indexRef.current = playback.index;
+  const jumpLines = useMemo(() => {
+    if (stale || !steps.length) return undefined;
+    return new Map([...visits].map(([line, list]) => [line, t('lineJumpHint', { line, n: list.length })]));
+  }, [stale, steps.length, visits, t]);
+  // 每個變數的改變步驟只算一次（整段執行換掉時才重算）
+  const varJump = useMemo<VarJump>(() => {
+    const cache = new Map<string, number[]>();
+    const changes = (name: string) => {
+      let list = cache.get(name);
+      if (!list) cache.set(name, (list = changeSteps(steps, name)));
+      return list;
+    };
+    return { changes, cached: (name) => cache.get(name), jump: (name, dir) => jumpTo(nearest(changes(name), indexRef.current, dir)) };
+  }, [steps, jumpTo]);
+  const visit = step?.event === 'line' ? visitNumber(visits.get(step.lineNumber), playback.index) : null;
+  const visitTotal = step ? (visits.get(step.lineNumber)?.length ?? 0) : 0;
 
   /** 以指定的測資執行（一鍵修正測試呼叫時，新的測資還沒反映到 active） */
   const runWith = useCallback(async (call: string, maxSteps: number = DEFAULT_STEP_LIMIT) => {
@@ -316,6 +344,8 @@ export default function App() {
                   errorLine={errorLine}
                   hint={stale ? undefined : lineHint(step, language.format)}
                   onRun={visualize}
+                  jumpLines={jumpLines}
+                  onLineJump={(line, dir) => jumpTo(nearest(visits.get(line) ?? [], playback.index, dir))}
                 />
               </Suspense>
             </div>
@@ -370,7 +400,14 @@ export default function App() {
                   {step.funcName}()
                   {step.depth > 1 && <span className="text-ink-400"> · {t('depth', { n: step.depth })}</span>}
                 </span>
-                <span className="rounded bg-ink-700 px-1.5 py-px text-brand">{t('line', { n: step.lineNumber })}</span>
+                <span className="rounded bg-ink-700 px-1.5 py-px text-brand">
+                  {t('line', { n: step.lineNumber })}
+                  {visit !== null && visitTotal > 1 && (
+                    <span className="ml-1.5 text-ink-300" data-visit>
+                      {t('visitOf', { k: visit, n: visitTotal })}
+                    </span>
+                  )}
+                </span>
                 <EventChip event={step.event} />
               </span>
             )}
@@ -429,14 +466,16 @@ export default function App() {
                 )
               ))}
             {step ? (
-              <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
-                slotHeight={slotHeight}
-                heapNames={heapNames}
-                callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}
-                design={designCalls ? { calls: designCalls, starts, onSeek: playback.seek } : undefined}
-                format={language.format}
-                context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
-              />
+              <VarJumpContext.Provider value={varJump}>
+                <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
+                  slotHeight={slotHeight}
+                  heapNames={heapNames}
+                  callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}
+                  design={designCalls ? { calls: designCalls, starts, onSeek: playback.seek } : undefined}
+                  format={language.format}
+                  context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
+                />
+              </VarJumpContext.Provider>
             ) : (
               !error && !run?.error && <EmptyState status={status} name={language.runtimeName} />
             )}
