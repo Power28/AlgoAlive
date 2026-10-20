@@ -1,30 +1,28 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw, TriangleAlert, Zap } from 'lucide-react';
+import { lazy, Suspense, useState } from 'react';
+import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw } from 'lucide-react';
 import { Controls } from './components/Controls';
 import { TabBar } from './components/TabBar';
 import { CodePreview } from './components/CodePreview';
 import { Visualizer } from './components/Visualizer';
-import { usePlayback } from './hooks/usePlayback';
-import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
-import { useLang, useT } from './i18n';
-import { computeCellKeys, computeGridKeys } from './lib/cellKeys';
-
-import { infoSlotHeight } from './lib/infoSlot';
-import { contextInfo } from './lib/context';
-import { buildCallTree, hasRecursion, showCallTree } from './lib/callTree';
-import { designStarts } from './components/DesignTimeline';
 import { CallAssist, CallHintBox } from './components/CallAssist';
 import { StepLimitBox } from './components/StepLimitBox';
-import { DEFAULT_STEP_LIMIT } from './lib/stepLimit';
 import { lineHint } from './components/ConditionPanel';
-import { getLanguage, LANGUAGES, type LanguageId } from './languages';
-import type { RuntimeStatus } from './languages/types';
-import { getTutorial, type Example, type Tutorial } from './tutorials';
-import type { TraceResult } from './types';
-import { Tour, type TourStep } from './components/Tour';
-import { useTour } from './hooks/useTour';
+import { Tour } from './components/Tour';
+import { EmptyState, ErrorBox, EventChip, ModeButton, RuntimeBadge, UpdateToast } from './components/AppParts';
+import { usePlayback } from './hooks/usePlayback';
+import { usePlaybackKeys } from './hooks/usePlaybackKeys';
+import { useRuns, useRuntimeStatus } from './hooks/useRuns';
 import { useServiceWorker } from './hooks/useServiceWorker';
-import { changeSteps, lineVisits, nearest, visitNumber, VarJumpContext, type VarJump } from './lib/stepSearch';
+import { useStepJump } from './hooks/useStepJump';
+import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
+import { useTour } from './hooks/useTour';
+import { useTraceView } from './hooks/useTraceView';
+import { useLang, useT } from './i18n';
+import { getLanguage, LANGUAGES, type LanguageId } from './languages';
+import { DEFAULT_STEP_LIMIT } from './lib/stepLimit';
+import { VarJumpContext } from './lib/stepSearch';
+import { appTourSteps } from './lib/tourSteps';
+import { getTutorial, type Example, type Tutorial } from './tutorials';
 
 // Monaco 很大（本地打包約 3 MB）：另外拆成一個檔案，下載時先用純文字顯示程式碼（build 時以 modulepreload 和主程式同時下載）
 const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ default: m.CodeEditor })));
@@ -37,115 +35,26 @@ const spinner = (
   </div>
 );
 
-/** 每個頁籤各自的執行結果（只存在記憶體中） */
-interface Run {
-  trace: TraceResult | null;
-  /** 執行當下的程式碼，用來分析索引與指針；與目前的程式碼不同時，畫面上的動畫就是舊的 */
-  code: string;
-  /** 執行當下的測試呼叫 */
-  call: string;
-  /** 這次執行的步數上限（到達上限後可以繼續追蹤更多步） */
-  maxSteps: number;
-  error: string | null;
-}
-
-/** 動畫是不是舊的：比較目前與上次執行時的程式碼、測資（改回原樣就不算修改） */
-function staleness(run: Run | undefined, code: string, call: string): 'code' | 'call' | 'both' | null {
-  if (!run?.trace) return null;
-  const codeChanged = run.code !== code;
-  const callChanged = run.call !== call;
-  return codeChanged && callChanged ? 'both' : codeChanged ? 'code' : callChanged ? 'call' : null;
-}
-
-const EMPTY_STEPS: TraceResult['steps'] = [];
-
 export default function App() {
   const t = useT();
   const { lang, setLang } = useLang();
   const { tabs, active, select, update, add, close } = useTabs();
-  const [runs, setRuns] = useState<Record<string, Run>>({});
   // 目前頁籤的語言：決定執行環境、編輯器語法與程式碼分析
   const language = getLanguage(active.language);
   const runtime = language.runtime();
-  const [status, setStatus] = useState<RuntimeStatus>(runtime.status);
-  const [statusDetail, setStatusDetail] = useState<string>();
+  const { status, detail: statusDetail } = useRuntimeStatus(runtime);
+  const { run, trace, steps, stale, runWith, visualize, forget } = useRuns(active, runtime);
+  const view = useTraceView(language, trace, steps, run?.code ?? '');
+  const playback = usePlayback(steps.length, trace);
+  const step = steps[playback.index];
+  const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
+  const jump = useStepJump({ steps, index: playback.index, stale: !!stale, setPlaying: playback.setPlaying, seek: playback.seek });
   const [leftMode, setLeftMode] = useState<'code' | 'guide'>('code');
   const [library, setLibrary] = useState<{ topicId?: string } | null>(null);
   const tour = useTour();
   const sw = useServiceWorker();
-
-  useEffect(
-    () =>
-      runtime.onStatus((s, detail) => {
-        setStatus(s);
-        setStatusDetail(detail);
-      }),
-    [runtime],
-  );
-
-  const run = runs[active.id];
-  const stale = staleness(run, active.code, active.call);
-  const trace = run?.trace ?? null;
-  const steps = trace?.steps ?? EMPTY_STEPS;
-  const cellKeys = useMemo(() => computeCellKeys(steps), [steps]);
-  const gridKeys = useMemo(() => computeGridKeys(steps), [steps]);
-  const indexMap = useMemo(() => language.analyzeIndexing(run?.code ?? ''), [language, run?.code]);
-  // 卡片欄位高度整段執行只算一次，播放時固定
-  const slotHeight = useMemo(() => infoSlotHeight(steps) || undefined, [steps]);
-  const context = useMemo(() => contextInfo(steps), [steps]);
-  const heapNames = useMemo(() => language.analyzeHeaps(run?.code ?? ''), [language, run?.code]);
-  // 設計類題目由操作順序說明，每個方法各自一次呼叫，不另外畫遞迴樹（除非方法內真的有遞迴）
-  const callTree = useMemo(() => {
-    const tree = buildCallTree(steps, language.format);
-    if (trace?.design && !hasRecursion(tree)) return null;
-    return showCallTree(tree) ? tree : null;
-  }, [steps, trace?.design, language]);
-  const designCalls = trace?.design?.calls;
-  const starts = useMemo(() => (designCalls ? designStarts(steps, designCalls.length) : []), [steps, designCalls]);
-  const playback = usePlayback(steps.length, trace);
-  const step = steps[playback.index];
-  const prevStep = playback.index > 0 ? steps[playback.index - 1] : undefined;
   const tutorial = getTutorial(active.tutorialId);
-
-  // 步驟搜尋：點行號跳到下一次執行這一行、點變數名稱跳到它下一次改變（跳轉時停止播放）
-  const visits = useMemo(() => lineVisits(steps), [steps]);
-  const { setPlaying, seek } = playback;
-  const jumpTo = useCallback((i: number | null) => {
-    if (i === null) return;
-    setPlaying(false);
-    seek(i);
-  }, [setPlaying, seek]);
-  const indexRef = useRef(playback.index);
-  indexRef.current = playback.index;
-  const jumpLines = useMemo(() => {
-    if (stale || !steps.length) return undefined;
-    return new Map([...visits].map(([line, list]) => [line, t('lineJumpHint', { line, n: list.length })]));
-  }, [stale, steps.length, visits, t]);
-  // 每個變數的改變步驟只算一次（整段執行換掉時才重算）
-  const varJump = useMemo<VarJump>(() => {
-    const cache = new Map<string, number[]>();
-    const changes = (name: string) => {
-      let list = cache.get(name);
-      if (!list) cache.set(name, (list = changeSteps(steps, name)));
-      return list;
-    };
-    return { changes, cached: (name) => cache.get(name), jump: (name, dir) => jumpTo(nearest(changes(name), indexRef.current, dir)) };
-  }, [steps, jumpTo]);
-  const visit = step?.event === 'line' ? visitNumber(visits.get(step.lineNumber), playback.index) : null;
-  const visitTotal = step ? (visits.get(step.lineNumber)?.length ?? 0) : 0;
-
-  /** 以指定的測資執行（一鍵修正測試呼叫時，新的測資還沒反映到 active） */
-  const runWith = useCallback(async (call: string, maxSteps: number = DEFAULT_STEP_LIMIT) => {
-    const { id, code } = active;
-    setRuns((r) => ({ ...r, [id]: { trace: r[id]?.trace ?? null, code: r[id]?.code ?? code, call: r[id]?.call ?? call, maxSteps: r[id]?.maxSteps ?? maxSteps, error: null } }));
-    try {
-      const result = await runtime.run(code, call, { maxSteps });
-      setRuns((r) => ({ ...r, [id]: { trace: result, code, call, maxSteps, error: null } }));
-    } catch (err) {
-      setRuns((r) => ({ ...r, [id]: { trace: null, code, call, maxSteps, error: err instanceof Error ? err.message : String(err) } }));
-    }
-  }, [active, runtime]);
-  const visualize = useCallback(() => runWith(active.call), [runWith, active.call]);
+  usePlaybackKeys(playback, !library && !tour.open && steps.length > 0);
 
   // 導覽要介紹的區塊都在「程式碼」模式；開始時關掉教學視窗
   const startTour = () => {
@@ -153,24 +62,9 @@ export default function App() {
     setLeftMode('code');
     tour.start();
   };
-  const tourSteps: TourStep[] = [
-    { id: 'welcome', title: 'tourWelcomeTitle', body: 'tourWelcomeBody' },
-    { id: 'editor', target: '[data-tour="editor"]', title: 'tourEditorTitle', body: 'tourEditorBody' },
-    { id: 'call', target: '[data-tour="call"]', title: 'tourCallTitle', body: 'tourCallBody' },
-    {
-      id: 'run',
-      target: '[data-action="visualize"]',
-      title: 'tourRunTitle',
-      body: 'tourRunBody',
-      // 先替使用者執行一次，下一步就有動畫可看
-      onNext: () => {
-        if (status === 'ready' && !run?.trace) void visualize();
-      },
-    },
-    { id: 'viz', target: '[data-tour="viz"]', title: 'tourVizTitle', body: 'tourVizBody' },
-    { id: 'controls', target: '[data-tour="controls"]', title: 'tourControlsTitle', body: 'tourControlsBody' },
-    { id: 'learn', target: '[data-action="library"]', title: 'tourLearnTitle', body: 'tourLearnBody' },
-  ];
+  const tourSteps = appTourSteps(() => {
+    if (status === 'ready' && !run?.trace) void visualize();
+  });
 
   const editActive = (patch: { code?: string; call?: string }) => {
     update(active.id, patch);
@@ -191,7 +85,7 @@ export default function App() {
 
   const closeTab = (id: string) => {
     close(id);
-    setRuns(({ [id]: _removed, ...rest }) => rest);
+    forget(id);
   };
 
   const openExample = (example: Example, tu: Tutorial) => {
@@ -199,23 +93,6 @@ export default function App() {
     setLibrary(null);
     setLeftMode('code');
   };
-
-  // 鍵盤快捷鍵：焦點不在輸入框 / 編輯器、教學視窗未開啟時才生效
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement;
-      if (library || tour.open || el.closest('input, textarea, button, .monaco-editor') || !steps.length) return;
-      if (e.key === 'ArrowRight') playback.next();
-      else if (e.key === 'ArrowLeft') playback.prev();
-      else if (e.key === ' ') playback.togglePlay();
-      else if (e.key === 'Home') playback.seek(0);
-      else if (e.key === 'End') playback.seek(playback.last);
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [playback, steps.length, library, tour.open]);
 
   const busy = status === 'loading' || status === 'running';
   const error = trace?.error;
@@ -346,8 +223,8 @@ export default function App() {
                   errorLine={errorLine}
                   hint={stale ? undefined : lineHint(step, language.format)}
                   onRun={visualize}
-                  jumpLines={jumpLines}
-                  onLineJump={(line, dir) => jumpTo(nearest(visits.get(line) ?? [], playback.index, dir))}
+                  jumpLines={jump.jumpLines}
+                  onLineJump={jump.jumpToLine}
                 />
               </Suspense>
             </div>
@@ -404,9 +281,9 @@ export default function App() {
                 </span>
                 <span className="rounded bg-ink-700 px-1.5 py-px text-brand">
                   {t('line', { n: step.lineNumber })}
-                  {visit !== null && visitTotal > 1 && (
+                  {jump.visit !== null && jump.visitTotal > 1 && (
                     <span className="ml-1.5 text-ink-300" data-visit>
-                      {t('visitOf', { k: visit, n: visitTotal })}
+                      {t('visitOf', { k: jump.visit, n: jump.visitTotal })}
                     </span>
                   )}
                 </span>
@@ -468,14 +345,20 @@ export default function App() {
                 )
               ))}
             {step ? (
-              <VarJumpContext.Provider value={varJump}>
-                <Visualizer step={step} prev={prevStep} next={steps[playback.index + 1]} cellKeys={cellKeys[playback.index] ?? {}} gridKeys={gridKeys[playback.index]} indexMap={indexMap}
-                  slotHeight={slotHeight}
-                  heapNames={heapNames}
-                  callTree={callTree ? { tree: callTree, index: playback.index, onSeek: playback.seek } : undefined}
-                  design={designCalls ? { calls: designCalls, starts, onSeek: playback.seek } : undefined}
+              <VarJumpContext.Provider value={jump.varJump}>
+                <Visualizer
+                  step={step}
+                  prev={prevStep}
+                  next={steps[playback.index + 1]}
+                  cellKeys={view.cellKeys[playback.index] ?? {}}
+                  gridKeys={view.gridKeys[playback.index]}
+                  indexMap={view.indexMap}
+                  slotHeight={view.slotHeight}
+                  heapNames={view.heapNames}
+                  callTree={view.callTree ? { tree: view.callTree, index: playback.index, onSeek: playback.seek } : undefined}
+                  design={view.designCalls ? { calls: view.designCalls, starts: view.starts, onSeek: playback.seek } : undefined}
                   format={language.format}
-                  context={{ stack: context.stack, loops: context.loops, frameKeys: context.frameKeys[playback.index] ?? [] }}
+                  context={{ stack: view.context.stack, loops: view.context.loops, frameKeys: view.context.frameKeys[playback.index] ?? [] }}
                 />
               </VarJumpContext.Provider>
             ) : (
@@ -514,104 +397,7 @@ export default function App() {
         </Suspense>
       )}
       {tour.open && <Tour steps={tourSteps} onClose={tour.close} />}
-      {sw.updateReady && (
-        // 新版本已在背景下載好：按下更新才切換（重新整理頁面）
-        <div className="fixed right-4 bottom-4 z-40 flex items-center gap-3 rounded-lg border border-brand/40 bg-ink-850 px-4 py-3 text-sm shadow-2xl" role="status" data-update-ready>
-          <RefreshCw size={16} className="shrink-0 text-brand" />
-          <span className="text-ink-100">{t('updateReady')}</span>
-          <button onClick={sw.update} className="rounded-md bg-brand px-3 py-1 text-xs font-semibold text-ink-950 transition hover:brightness-110" data-action="update">
-            {t('updateNow')}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModeButton({
-  active,
-  onClick,
-  icon,
-  children,
-  ...rest
-}: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode; 'data-action'?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      {...rest}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide uppercase transition ${
-        active ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-100'
-      }`}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-function EventChip({ event }: { event: 'line' | 'return' | 'exception' }) {
-  const t = useT();
-  const map = {
-    line: [t('nextToRun'), 'bg-ink-700 text-ink-300'],
-    return: [t('eventReturn'), 'bg-ok/20 text-ok'],
-    exception: [t('eventException'), 'bg-err/20 text-err'],
-  } as const;
-  const [label, cls] = map[event];
-  return <span className={`rounded px-1.5 py-px ${cls}`}>{label}</span>;
-}
-
-function RuntimeBadge({ status, detail, name }: { status: RuntimeStatus; detail?: string; name: string }) {
-  const t = useT();
-  const lang = { lang: name };
-  if (status === 'loading')
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-ink-400">
-        <Loader2 size={14} className="animate-spin" /> <span className="hidden md:inline">{t('runtimeLoading', lang)}</span>
-      </span>
-    );
-  if (status === 'error')
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-err" title={detail}>
-        <TriangleAlert size={14} /> <span className="hidden md:inline">{t('runtimeFailed', lang)}</span>
-      </span>
-    );
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-ok" data-runtime="ready" title={t('runtimeReady', lang)}>
-      <Zap size={14} /> <span className="hidden md:inline">{t('runtimeReady', lang)}</span>
-    </span>
-  );
-}
-
-function ErrorBox({ message, line }: { message: string; line?: number | null }) {
-  const t = useT();
-  return (
-    <div data-error className="mb-5 flex items-start gap-2 rounded-lg border border-err/40 bg-err/10 px-3 py-2 text-sm text-err">
-      <TriangleAlert size={16} className="mt-0.5 shrink-0" />
-      <div>
-        <div className="font-mono">{message}</div>
-        {line ? <div className="mt-0.5 text-xs text-err/80">{t('atLine', { n: line })}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ status, name }: { status: RuntimeStatus; name: string }) {
-  const t = useT();
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-ink-400">
-      <div className="flex gap-2">
-        {[3, 8, 11, 2].map((n, i) => (
-          <div
-            key={i}
-            className={`flex size-11 items-center justify-center rounded-md border font-mono text-sm ${
-              i === 0 || i === 3 ? 'border-brand/60 text-ink-100' : 'border-ink-600'
-            }`}
-          >
-            {n}
-          </div>
-        ))}
-      </div>
-      <p className="max-w-sm text-sm">{t(status === 'loading' ? 'emptyLoading' : 'emptyIdle', { lang: name })}</p>
+      {sw.updateReady && <UpdateToast onUpdate={sw.update} />}
     </div>
   );
 }
