@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode, type Ref } from 'react';
 import { useValueFormat } from '../lib/heapContext';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useIsPresent } from 'framer-motion';
 import { CornerDownLeft, Repeat } from 'lucide-react';
 import type { ExecutionStep, Heap, LoopInfo } from '../types';
 import { formatValue } from '../lib/value';
@@ -40,22 +40,13 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
               const current = i === all.length - 1;
               const returning = current && step.event === 'return' && step.returnValue;
               return (
-                <motion.div
-                  key={frameKeys[i] ?? i}
-                  layout
-                  initial={{ opacity: 0, x: 16, scale: 0.92 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.92 }}
-                  transition={{ duration: 0.22 }}
-                  className="flex shrink-0 items-center gap-1.5"
-                >
+                <StackFrame key={frameKeys[i] ?? i} current={current}>
                   {i > 0 && <span className="text-ink-600">›</span>}
                   <span
                     className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[11px] ${
                       current ? 'border-brand/60 bg-brand/10 text-ink-100' : 'border-ink-700 text-ink-400'
                     }`}
                     title={current ? undefined : t('waitingAt', { n: frame.line })}
-                    data-current={current || undefined}
                   >
                     <span className={current ? 'font-semibold text-brand' : ''}>{frame.func}</span>
                     <span>({frame.args.map(([n, v]) => `${n}=${v}`).join(', ')})</span>
@@ -72,7 +63,7 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
                       </motion.span>
                     )}
                   </span>
-                </motion.div>
+                </StackFrame>
               );
             })}
           </AnimatePresence>
@@ -98,6 +89,28 @@ export function ContextBar({ step, heap, showStack, showLoops, frameKeys }: Prop
 }
 
 const MAX_DOTS = 16;
+
+/**
+ * 呼叫堆疊的一層。剛回傳的那一層會播一小段離場動畫才從畫面消失：
+ * 離場中的那一層已經不是目前的呼叫，不標 data-current（mode="popLayout" 需要把 ref 交給外層元素）
+ */
+function StackFrame({ ref, current, children }: { ref?: Ref<HTMLDivElement>; current: boolean; children: ReactNode }) {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      ref={ref}
+      layout
+      initial={{ opacity: 0, x: 16, scale: 0.92 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.92 }}
+      transition={{ duration: 0.22 }}
+      className="flex shrink-0 items-center gap-1.5"
+      data-current={(current && present) || undefined}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 function LoopChip({ loop, jump }: { loop: LoopInfo; jump?: 'break' | 'continue' }) {
   const t = useT();
