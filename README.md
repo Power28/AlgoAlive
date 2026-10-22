@@ -108,14 +108,26 @@ push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動�
 
 ```bash
 npm run build   # e2e 測試的是 dist/，先建置
-npm test        # = test:tracer + test:e2e
+npm test        # = test:tracer + test:js + test:e2e
 ```
 
 | 指令 | 內容 |
 |---|---|
 | `npm run test:tracer` | [scripts/check_examples.py](scripts/check_examples.py)：直接用 Python 執行所有教學範例，比對回傳值；另外測試 tracer 的步數上限、錯誤行號、`class Solution`、`print` 輸出、遞迴時的節點參照等行為。幾秒內完成，不需要瀏覽器 |
 | `npm run test:js` | [scripts/check_js.mjs](scripts/check_js.mjs)：在 Node 直接執行 JavaScript 追蹤器（不需要瀏覽器）：測試呼叫的各種寫法、說明卡片（條件、計算、容器操作、解構交換、切片、迴圈圈數、try / catch、內建函式）、遞迴堆疊、鏈結串列 / 樹的轉換、設計題、無窮迴圈的步數上限（即使被 `try / catch` 包住）、錯誤行號、暫時性死區，並執行所有 JavaScript 教學範例（含 Python 範例的 JavaScript 版本）比對回傳值。新增 JavaScript 範例時 expected 先寫 `__FILL__`，再執行 `node scripts/fill_js_expected.mjs` 填入實際的回傳值 |
-| `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 從教學庫逐一開啟範例（有 JavaScript 版本的再切換語言開啟一次）、執行到最後一步，比對畫面上的回傳值；並測試頁籤（新增、重新命名、重新整理後保留、關閉）、語言切換，以及主控台沒有錯誤。加 `-- --url <網址>` 可以改測 dev server 或線上網站 |
+| `npm run test:e2e` | [scripts/e2e.mjs](scripts/e2e.mjs)：以 `vite preview` 啟動 `dist/`，用 headless Chrome 實際操作網站。測試分成 8 組（[scripts/e2e/](scripts/e2e/)），每組用全新的瀏覽器環境、彼此獨立，平行執行（預設依 CPU 數最多同時 3 組，本機約 2.5 分鐘）。某一組失敗會自動重跑一次：第二次才通過的標成「不穩定」並列在總結裡，兩次都失敗才算失敗。加 `-- --url <網址>` 改測 dev server 或線上網站、`-- --only cards,limits` 只跑某幾組、`-- --jobs 1` 依序執行；單獨一組也能直接執行：`node scripts/e2e/cards.mjs` |
+
+| e2e 組 | 內容 |
+|---|---|
+| `onboarding` | 第一次造訪：首頁載入（編輯器預先下載、教學延後載入）、首次使用導覽、步驟跳轉與快捷鍵、CSP |
+| `basics` | 頁籤（新增、重新命名、重新整理後保留、關閉）、介面語言、舊的動畫提示、測試呼叫的輔助、JavaScript |
+| `cards` | 說明卡片：條件、計算、邏輯、迴圈與呼叫、容器操作與堆積、遞迴樹、交換 / 推導式 / 切片 |
+| `more-cards` | 字典樹、break / continue、二維格子、try / except、內建函式、設計類題目、負數位元、教學頁的示範動畫 |
+| `examples-py`、`examples-js` | 從教學庫逐一開啟每個 Python / JavaScript 範例、執行到最後一步，比對畫面上的回傳值 |
+| `limits` | 步數上限、無窮迴圈、大陣列與大字典 |
+| `offline` | 造訪一次後斷網（頁面與 Worker 都斷），仍能打開網站並執行 Python |
+
+每一組最後都會檢查瀏覽器主控台沒有錯誤。
 
 每個範例的預期回傳值寫在 `src/tutorials/*.ts` 的 `expected` 欄位（與畫面上「returned」的寫法相同），兩種測試共用；新增範例時一併填上即可。
 
