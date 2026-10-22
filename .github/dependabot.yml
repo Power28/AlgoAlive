@@ -1,0 +1,36 @@
+# Dependabot：每週一自動開 PR 更新依賴套件，交給 test.yml 的 CI 驗證（不會自動合併）
+# - npm：小版本與修補版本合成一個 PR，大版本各自一個 PR（可能需要改程式，分開比較好檢查）
+# - GitHub Actions：全部合成一個 PR
+# 注意：Pyodide 不是 npm 套件（src/languages/python/pyodide.worker.ts 的 PYODIDE_VERSION，從 CDN 載入），不在這裡更新
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # CI 用 Node 24：型別定義跟著 Node 的大版本走，Node 升級時再一起手動更新
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Taipei
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']

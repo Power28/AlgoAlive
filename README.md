@@ -103,6 +103,7 @@ npm run build   # 輸出至 dist/，可直接部署到 GitHub Pages / Netlify / 
 
 push 到 `main` 時會由 [GitHub Actions](.github/workflows/deploy.yml) 自動建置、**跑完測試**，通過後才部署到 GitHub Pages。
 開 Pull Request 時，[test.yml](.github/workflows/test.yml) 會在 PR 上建置並跑同一套測試（不部署），合併前就能看到結果。
+[Dependabot](.github/dependabot.yml) 每週一自動開 PR 更新 npm 套件與 GitHub Actions（小版本與修補版本合成一個 PR、大版本各自一個），同樣由 CI 驗證，需要手動合併；Pyodide 是從 CDN 載入的，版本寫在 `src/languages/python/pyodide.worker.ts`，不在 Dependabot 的範圍內。
 
 ### 測試
 
