@@ -18,11 +18,11 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "acorn": "^8.19.0",
-    "framer-motion": "^14.2.0",
-    "lucide-react": "^1.56.0",
+    "framer-motion": "^14.6.0",
+    "lucide-react": "^1.61.0",
     "monaco-editor": "^0.57.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -30,10 +30,10 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "puppeteer-core": "^25.13.0",
+    "puppeteer-core": "^25.16.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   },
   "overrides": {
     "dompurify": "^3.4.17"
