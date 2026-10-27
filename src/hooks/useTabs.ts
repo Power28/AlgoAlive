@@ -13,6 +13,9 @@ export interface Tab {
   /** 從教學範例開啟時記錄來源，用來顯示「教學」面板 */
   tutorialId?: string;
   exampleId?: string;
+  /** 存成筆記後：對應的解題筆記與其中的解法 */
+  noteId?: string;
+  solutionId?: string;
 }
 
 interface TabsState {

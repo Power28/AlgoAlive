@@ -24,6 +24,7 @@ const ALL = [
   { name: 'cards' },
   { name: 'basics' },
   { name: 'onboarding' },
+  { name: 'notes' },
   { name: 'limits' },
   { name: 'offline' },
 ];

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { BookOpen, CircleHelp, Code2, History, Languages, Loader2, Play, RefreshCw } from 'lucide-react';
+import { BookmarkCheck, BookmarkPlus, BookOpen, CircleHelp, Code2, History, Languages, Loader2, NotebookPen, Play, RefreshCw } from 'lucide-react';
 import { Controls } from './components/Controls';
 import { TabBar } from './components/TabBar';
 import { CodePreview } from './components/CodePreview';
@@ -17,6 +17,7 @@ import { useStepJump } from './hooks/useStepJump';
 import { blankTab, tabFromExample, useTabs } from './hooks/useTabs';
 import { useTour } from './hooks/useTour';
 import { useTraceView } from './hooks/useTraceView';
+import { useTabNotes } from './hooks/useTabNotes';
 import { useLang, useT } from './i18n';
 import { getLanguage, LANGUAGES, type LanguageId } from './languages';
 import { DEFAULT_STEP_LIMIT } from './lib/stepLimit';
@@ -29,6 +30,8 @@ const CodeEditor = lazy(() => import('./components/CodeEditor').then((m) => ({ d
 // 教學視窗與教學頁：打開時才載入
 const Library = lazy(() => import('./components/Library').then((m) => ({ default: m.Library })));
 const TutorialView = lazy(() => import('./components/TutorialView').then((m) => ({ default: m.TutorialView })));
+// 解題筆記視窗：打開時才載入
+const Notes = lazy(() => import('./components/Notes').then((m) => ({ default: m.Notes })));
 const spinner = (
   <div className="flex h-full items-center justify-center text-ink-400">
     <Loader2 className="size-5 animate-spin" />
@@ -54,11 +57,13 @@ export default function App() {
   const tour = useTour();
   const sw = useServiceWorker();
   const tutorial = getTutorial(active.tutorialId);
-  usePlaybackKeys(playback, !library && !tour.open && steps.length > 0);
+  const notes = useTabNotes({ active, language, status, update, add, visualize });
+  usePlaybackKeys(playback, !library && !tour.open && !notes.open && steps.length > 0);
 
   // 導覽要介紹的區塊都在「程式碼」模式；開始時關掉教學視窗
   const startTour = () => {
     setLibrary(null);
+    notes.close();
     setLeftMode('code');
     tour.start();
   };
@@ -137,6 +142,20 @@ export default function App() {
             <span className="hidden sm:inline">{t('learn')}</span>
           </button>
           <button
+            onClick={() => notes.openNotes()}
+            className="relative flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-ink-300 transition hover:bg-ink-700 hover:text-ink-100"
+            title={notes.store.dueCount ? t('notesDueBadge', { n: notes.store.dueCount }) : t('notes')}
+            data-action="notes"
+          >
+            <NotebookPen size={14} />
+            <span className="hidden sm:inline">{t('notes')}</span>
+            {notes.store.dueCount > 0 && (
+              <span className="rounded-full bg-brand px-1.5 text-[10px] font-bold text-ink-950" data-notes-due>
+                {notes.store.dueCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={startTour}
             className="flex items-center rounded-md p-1.5 text-ink-300 transition hover:bg-ink-700 hover:text-ink-100"
             title={t('tourReplay')}
@@ -168,7 +187,19 @@ export default function App() {
             <ModeButton active={leftMode === 'guide'} onClick={() => setLeftMode('guide')} icon={<BookOpen size={14} />} data-action="guide">
               {t('guide')}
             </ModeButton>
-            <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-400" title={t('languageHint')}>
+            <button
+              onClick={() => {
+                setLeftMode('code');
+                notes.saveTab();
+              }}
+              className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-300 transition hover:bg-ink-700 hover:text-ink-100"
+              title={notes.linked ? t('updateNoteHint', { title: notes.linked.title }) : t('saveAsNoteHint')}
+              data-action="save-as-note"
+            >
+              {notes.linked ? <BookmarkCheck size={14} className="text-brand" /> : <BookmarkPlus size={14} />}
+              <span className="hidden sm:inline">{notes.linked ? t('updateNote') : t('saveAsNote')}</span>
+            </button>
+            <label className="flex items-center gap-1.5 text-xs text-ink-400" title={t('languageHint')}>
               <span className="hidden sm:inline">{t('languageLabel')}</span>
               <select
                 value={language.id}
@@ -391,6 +422,21 @@ export default function App() {
         </section>
       </main>
 
+      {notes.open && (
+        <Suspense fallback={null}>
+          <Notes
+            store={notes.store}
+            initialDraft={notes.open.draft}
+            initialNoteId={notes.open.noteId}
+            onClose={notes.close}
+            onDraftSaved={notes.onDraftSaved}
+            onOpenSolution={(note, s) => {
+              notes.openSolution(note, s);
+              setLeftMode('code');
+            }}
+          />
+        </Suspense>
+      )}
       {library && (
         <Suspense fallback={null}>
           <Library initialTopicId={library.topicId} onClose={() => setLibrary(null)} onOpenExample={openExample} />

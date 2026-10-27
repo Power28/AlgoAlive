@@ -27,7 +27,7 @@ async function testTour(page, url) {
   }));
   // 第一次打開（沒有存過頁籤）：自動出現導覽
   const first = await state();
-  record('the tour opens on the first visit', first.step === 'welcome' && first.progress === '1 / 7' ? null : `got ${JSON.stringify(first)}`);
+  record('the tour opens on the first visit', first.step === 'welcome' && first.progress === '1 / 8' ? null : `got ${JSON.stringify(first)}`);
 
   // 用方向鍵往下走；在「視覺化」那一步按下一步，會先幫使用者執行範例
   const order = [first.step];
@@ -58,9 +58,14 @@ async function testTour(page, url) {
   await page.keyboard.press('ArrowRight');
   await sleep(250);
   const learn = await state();
+  await page.keyboard.press('ArrowRight');
+  await sleep(250);
+  const notes = await state();
   record(
     'arrow keys move the tour, not the playback',
-    controls.step === 'controls' && learn.step === 'learn' && learn.playback === ran.playback ? null : `got ${JSON.stringify({ controls, learn, ran })}`,
+    controls.step === 'controls' && learn.step === 'learn' && notes.step === 'notes' && notes.playback === ran.playback
+      ? null
+      : `got ${JSON.stringify({ controls, learn, notes, ran })}`,
   );
 
   // 最後一步按「開始使用」關閉，之後重新整理不會再出現；右上角的 ? 可以重看，Esc 關閉

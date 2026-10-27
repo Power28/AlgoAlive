@@ -13,5 +13,6 @@ export function appTourSteps(runExample: () => void): TourStep[] {
     { id: 'viz', target: '[data-tour="viz"]', title: 'tourVizTitle', body: 'tourVizBody' },
     { id: 'controls', target: '[data-tour="controls"]', title: 'tourControlsTitle', body: 'tourControlsBody' },
     { id: 'learn', target: '[data-action="library"]', title: 'tourLearnTitle', body: 'tourLearnBody' },
+    { id: 'notes', target: '[data-action="save-as-note"]', title: 'tourNotesTitle', body: 'tourNotesBody' },
   ];
 }
