@@ -4,6 +4,7 @@
 import { MAX_STEPS, traceJs } from '../src/languages/javascript/tracer.ts';
 import { fmt, loadJsExamples } from './js_examples.mjs';
 import { changeSteps, lineVisits, nearest, visitNumber } from '../src/lib/stepSearch.ts';
+import * as notes from '../src/lib/notes.ts';
 
 const results = [];
 function check(name, fn) {
@@ -194,6 +195,82 @@ check('step search finds the runs of a line and the changes of a variable', () =
   const list = traceJs('function f(head) {\n  const first = head;\n  head.next.val = 9;\n  return first;\n}', 'f([1, 2, 3])');
   const first = changeSteps(list.steps, 'first');
   if (first.length !== 2) return `first should change when a node it reaches changes: ${first}`;
+});
+
+check('notes schedule reviews on a ladder of intervals', () => {
+  const day = (t) => notes.startOfDay(t);
+  const now = new Date(2026, 9, 27, 15, 30).getTime();
+  const after = (n) => day(new Date(2026, 9, 27 + n).getTime());
+  if (notes.initialReview('solved', now).due !== after(3)) return 'solved → in 3 days';
+  if (notes.initialReview('hint', now).due !== after(1) || notes.initialReview('stuck', now).level !== 0) return 'hint / stuck → tomorrow';
+  let r = notes.initialReview('solved', now);
+  r = notes.scheduleReview(r, 'easy', now);
+  if (r.level !== 2 || r.due !== after(7) || r.history.length !== 1) return `easy should move up: ${JSON.stringify(r)}`;
+  r = notes.scheduleReview(r, 'ok', now);
+  if (r.level !== 2 || r.due !== after(7)) return `ok should stay: ${r.level}`;
+  r = notes.scheduleReview(r, 'again', now);
+  if (r.level !== 0 || r.due !== after(1)) return `again should reset: ${r.level}`;
+  for (let i = 0; i < 20; i++) r = notes.scheduleReview(r, 'easy', now);
+  if (r.level !== notes.INTERVALS.length - 1) return `level is capped: ${r.level}`;
+  const note = { review: { due: after(0) } };
+  if (notes.dueInDays(note, now) !== 0 || !notes.isDue(note, now)) return 'due today';
+  if (notes.dueInDays({ review: { due: after(-2) } }, now) !== -2 || notes.isDue({ review: { due: after(1) } }, now)) return 'overdue / not due';
+});
+
+check('notes parse titles, tags and links, and filter the list', () => {
+  if (notes.numberFromTitle('167. Two Sum II') !== 167 || notes.numberFromTitle('1、兩數之和') !== 1 || notes.numberFromTitle('Two Sum') !== null) return 'numberFromTitle';
+  if (notes.titleWithoutNumber('167. Two Sum II') !== 'Two Sum II') return 'titleWithoutNumber';
+  const split = notes.sanitizeNote({ id: 'x', title: '1. Two Sum', number: 1 }, 0);
+  const guessed = notes.sanitizeNote({ id: 'y', title: '42. Trapping Rain Water' }, 0);
+  if (split.title !== 'Two Sum' || split.number !== 1 || guessed.number !== 42 || guessed.title !== 'Trapping Rain Water') return `number in the title ${JSON.stringify([split.title, guessed.number, guessed.title])}`;
+  if (JSON.stringify(notes.parseTags('雙指針, 陣列，雙指針、 hash ')) !== '["雙指針","陣列","hash"]') return `parseTags ${notes.parseTags('雙指針, 陣列，雙指針、 hash ')}`;
+  if (notes.safeUrl('javascript:alert(1)') !== '' || notes.safeUrl(' https://leetcode.com/problems/two-sum/ ') !== 'https://leetcode.com/problems/two-sum/') return 'safeUrl';
+  const now = Date.now();
+  const mk = (id, number, extra) => notes.sanitizeNote({ id, title: `t${id}`, number, ...extra }, now);
+  const list = [
+    mk('a', 3, { tags: ['dp'], approach: 'rolling array', review: { due: now - 2 * 86400000 } }),
+    mk('b', 1, { tags: ['two pointers'], difficulty: 'easy', review: { due: now + 5 * 86400000 } }),
+    mk('c', 2, { tags: ['dp'], status: 'stuck', review: { due: now } }),
+  ];
+  const ids = (xs) => xs.map((n) => n.id).join('');
+  if (ids(notes.filterNotes(list, {}, 'due', now)) !== 'acb') return `sort by due ${ids(notes.filterNotes(list, {}, 'due', now))}`;
+  if (ids(notes.filterNotes(list, {}, 'number', now)) !== 'bca') return 'sort by number';
+  if (ids(notes.filterNotes(list, { dueOnly: true }, 'due', now)) !== 'ac') return 'due only';
+  if (ids(notes.filterNotes(list, { tag: 'dp', status: 'stuck' }, 'due', now)) !== 'c') return 'tag + status';
+  if (ids(notes.filterNotes(list, { query: 'ROLLING' }, 'due', now)) !== 'a' || ids(notes.filterNotes(list, { query: '1' }, 'number', now)) !== 'b') return 'query';
+  if (JSON.stringify(notes.allTags(list)) !== '["dp","two pointers"]') return 'allTags';
+});
+
+check('notes import merges by id, keeps the newer copy and rejects bad files', () => {
+  const now = Date.now();
+  const mine = [
+    notes.sanitizeNote({ id: 'n1', title: 'mine newer', updatedAt: 200 }, now),
+    notes.sanitizeNote({ id: 'n2', title: 'mine older', updatedAt: 100 }, now),
+  ];
+  const file = JSON.parse(notes.exportNotes(mine, now));
+  file.notes[0].updatedAt = 150; // 檔案裡的 n1 比較舊 → 保留本機的
+  file.notes[0].title = 'theirs older';
+  file.notes[1].updatedAt = 300; // 檔案裡的 n2 比較新 → 用檔案的
+  file.notes[1].title = 'theirs newer';
+  file.notes.push(
+    { id: 'n3', title: 'new', url: 'javascript:alert(1)', status: 'weird', solutions: Array.from({ length: 30 }, (_, i) => ({ code: `x = ${i}` })) },
+    { title: 'no id' },
+    'garbage',
+  );
+  const r = notes.importNotes(mine, JSON.stringify(file), now);
+  const byId = Object.fromEntries(r.notes.map((n) => [n.id, n]));
+  if (r.added !== 1 || r.updated !== 1 || r.kept !== 1 || r.invalid !== 2) return `counts ${JSON.stringify({ ...r, notes: undefined })}`;
+  if (byId.n1.title !== 'mine newer' || byId.n2.title !== 'theirs newer') return 'newer copy wins';
+  if (byId.n3.url !== '' || byId.n3.status !== 'solved' || byId.n3.solutions.length !== notes.MAX.solutions) return `sanitized ${JSON.stringify(byId.n3).slice(0, 200)}`;
+  const throws = (text) => {
+    try {
+      notes.importNotes(mine, text, now);
+      return null;
+    } catch (e) {
+      return e.message;
+    }
+  };
+  if (throws('{not json') !== 'not-json' || throws('{"notes": []}') !== 'not-notes') return 'bad files are rejected';
 });
 
 check('syntax and runtime errors report the line', () => {

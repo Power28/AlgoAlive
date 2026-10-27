@@ -25,7 +25,7 @@ export function VarName({ name, className, children }: { name: string; className
   return (
     <button
       type="button"
-      className={`${className ?? ''} cursor-pointer underline decoration-ink-500 decoration-dotted underline-offset-4 transition hover:text-brand hover:decoration-brand`}
+      className={`${className ?? ''} cursor-pointer underline decoration-ink-400 decoration-dotted underline-offset-4 transition hover:text-brand hover:decoration-brand`}
       title={t('varJumpHint', { name, n: changes.length })}
       onClick={(e) => {
         jump.jump(name, e.shiftKey ? -1 : 1);
